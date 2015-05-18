@@ -1,3 +1,4 @@
 #Tizen#
 Project of System Software Cource, SKKU
-asd
+---
+https://confluence.atlassian.com/display/BITBUCKET/Set+up+SSH+for+Git
