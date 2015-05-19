@@ -195,8 +195,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->pause)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
+			/*********************************************************************/
 			ui->kill_time = 5000;
 			ui->kill_timer = ecore_timer_add(ui->kill_time, func, ui);
+			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
 		}
@@ -213,11 +215,13 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->resume)
 				r = ui->ops->resume(ui->ops->data);
 			ui->state = AS_RUNNING;
+			/*********************************************************************/
 			ui->kill_time = -1;
 			if(ui->kill_timer){
 				ecore_timer_del(ui->kill_timer);
 				ui->kill_timer = NULL;
 			}
+			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
 		//r = appcore_resume_rotation_cb();
