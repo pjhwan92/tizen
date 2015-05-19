@@ -146,6 +146,17 @@ static void __appcore_efl_memory_flush_cb(void)
 	elm_cache_all_flush();
 }
 
+static Eina_Bool __force_terminate(void *data)
+{
+	struct ui_priv *ui = (struct ui_priv *)data;
+
+	//appcore_flush_memory();
+	//ui->mftimer = NULL;
+	//printf("test\n");
+
+	return ECORE_CALLBACK_CANCEL;
+}
+
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
@@ -197,7 +208,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			ui->kill_time = 5000; //using MEM/BAT/RUA information to define kill time
-			ui->kill_timer = ecore_timer_add(ui->kill_time, func, ui); //have to add event func
+			ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate, ui);
 			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
