@@ -51,7 +51,7 @@ struct ui_priv {
 
 	struct appcore_ops *ops;
 	void (*mfcb) (void);	/* Memory Flushing Callback */
-	unsigned int kill_time;
+	int kill_time;
 };
 
 static struct ui_priv priv;
@@ -210,6 +210,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->resume)
 				r = ui->ops->resume(ui->ops->data);
 			ui->state = AS_RUNNING;
+			ui->kill_time = -1;
 		}
 		/*TODO : rotation start*/
 		//r = appcore_resume_rotation_cb();
