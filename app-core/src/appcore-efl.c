@@ -145,18 +145,17 @@ static void __appcore_efl_memory_flush_cb(void)
 	_DBG("[APP %d]   __appcore_efl_memory_flush_cb()", _pid);
 	elm_cache_all_flush();
 }
-
-static Eina_Bool __force_terminate(void *data)
+/*********************************************************************/
+static void __force_terminate(void *data)
 {
 	struct ui_priv *ui = (struct ui_priv *)data;
 
-	//appcore_flush_memory();
-	//ui->mftimer = NULL;
-	//printf("test\n");
-
-	return ECORE_CALLBACK_CANCEL;
+	_DBG("[APP %d] TERMINATE", _pid);
+	ui->kill_timer = NULL;
+	ui->state = AS_DYING;
+	elm_exit();
 }
-
+/*********************************************************************/
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
