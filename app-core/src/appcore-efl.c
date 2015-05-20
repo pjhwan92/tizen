@@ -21,6 +21,7 @@
 
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <X11/Xatom.h>
@@ -206,8 +207,11 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
+			FILE *fp = fopen("/home/developer/kill_time", "w");		
 			ui->kill_time = 5000; //using MEM/BAT/RUA information to define kill time
-			ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate, ui);
+			//ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate, ui);
+			fprinf(fp,"%s: %d\n", ui->name, ui->kill_time);
+			fclose(fp);
 			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
@@ -227,10 +231,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			/*********************************************************************/
 			ui->kill_time = -1;
-			if(ui->kills_timer){
-				ecore_timer_del(ui->kill_timer);
-				ui->kill_timer = NULL;
-			}
+			//if(ui->kills_timer){
+				//ecore_timer_del(ui->kill_timer);
+				//ui->kill_timer = NULL;
+			//}
 			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
