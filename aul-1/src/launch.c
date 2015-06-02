@@ -36,6 +36,7 @@
 #include "simple_util.h"
 #include "launch.h"
 #include "key.h"
+#include "aul_util.h"
 
 static int aul_initialized = 0;
 static int aul_fd;
@@ -87,6 +88,7 @@ static int app_terminate()
 	return 0;
 }
 
+
 /**
  * @brief	encode kb and send it to 'pid'
  * @param[in]	pid		receiver's pid
@@ -113,6 +115,48 @@ SLPAPI int app_send_cmd(int pid, int cmd, bundle *kb)
 			break;
 		case -ELOCALLAUNCH_ID:
 			res = AUL_R_LOCAL;
+			break;
+		case -EILLEGALACCESS:
+			res = AUL_R_EILLACC;
+			break;
+		case -ETERMINATING:
+			res = AUL_R_ETERMINATING;
+			break;
+		case -ENOLAUNCHPAD:
+			res = AUL_R_ENOLAUNCHPAD;
+			break;
+		default:
+			res = AUL_R_ERROR;
+		}
+	}
+	free(kb_data);
+
+	return res;
+}
+
+SLPAPI int app_send_cmd_with_noreply(int pid, int cmd, bundle *kb)
+{
+	int datalen;
+	bundle_raw *kb_data;
+	int res;
+
+	bundle_encode(kb, &kb_data, &datalen);
+	if ((res = __app_send_raw_with_noreply(pid, cmd, kb_data, datalen)) < 0) {
+		switch (res) {
+		case -EINVAL:
+			res = AUL_R_EINVAL;
+			break;
+		case -ECOMM:
+			res = AUL_R_ECOMM;
+			break;
+		case -EAGAIN:
+			res = AUL_R_ETIMEOUT;
+			break;
+		case -ELOCALLAUNCH_ID:
+			res = AUL_R_LOCAL;
+			break;
+		case -EILLEGALACCESS:
+			res = AUL_R_EILLACC;
 			break;
 		default:
 			res = AUL_R_ERROR;
@@ -186,6 +230,7 @@ int app_request_to_launchpad(int cmd, const char *pkgname, bundle *kb)
 	int must_free = 0;
 	int ret = 0;
 
+	SECURE_LOGD("launch request : %s", pkgname);
 	if (kb == NULL) {
 		kb = bundle_create();
 		must_free = 1;
@@ -194,8 +239,9 @@ int app_request_to_launchpad(int cmd, const char *pkgname, bundle *kb)
 
 	bundle_add(kb, AUL_K_PKG_NAME, pkgname);
 	__set_stime(kb);
-	ret = app_send_cmd(LAUNCHPAD_PID, cmd, kb);
+	ret = app_send_cmd(AUL_UTIL_PID, cmd, kb);
 
+	_D("launch request result : %d", ret);
 	if (ret == AUL_R_LOCAL) {
 		_E("app_request_to_launchpad : Same Process Send Local");
 		bundle *b;
@@ -227,8 +273,11 @@ int app_request_to_launchpad(int cmd, const char *pkgname, bundle *kb)
 static int __send_result_to_launchpad(int fd, int res)
 {
 	if (send(fd, &res, sizeof(int), MSG_NOSIGNAL) < 0) {
-		if (errno == EPIPE)
+		if (errno == EPIPE) {
 			_E("send failed due to EPIPE.\n");
+			close(fd);
+			return -1;
+		}
 		_E("send fail to client");
 	}
 	close(fd);
@@ -247,6 +296,7 @@ int aul_sock_handler(int fd)
 
 	const char *pid_str;
 	int pid;
+	int ret;
 
 	if ((pkt = __app_recv_raw(fd, &clifd, &cr)) == NULL) {
 		_E("recv error");
@@ -260,7 +310,15 @@ int aul_sock_handler(int fd)
 		return -1;
 	}
 
-	__send_result_to_launchpad(clifd, 0);
+	if (pkt->cmd != APP_RESULT && pkt->cmd != APP_CANCEL) {
+		ret = __send_result_to_launchpad(clifd, 0);
+		if (ret < 0) {
+			free(pkt);
+			return -1;
+		}
+	} else {
+		close(clifd);
+	}
 
 	switch (pkt->cmd) {
 	case APP_START:	/* run in callee */
@@ -280,6 +338,10 @@ int aul_sock_handler(int fd)
 
 	case APP_TERM_BY_PID:	/* run in callee */
 		app_terminate();
+		break;
+
+	case APP_TERM_REQ_BY_PID:	/* run in callee */
+		app_subapp_terminate_request();
 		break;
 
 	case APP_RESULT:	/* run in caller */
@@ -372,7 +434,7 @@ int aul_register_init_callback(
 int aul_initialize()
 {
 	if (aul_initialized) {
-		_E("aul already initialized");
+		//_E("aul already initialized");
 		return AUL_R_ECANCELED;
 	}
 
@@ -388,12 +450,11 @@ int aul_initialize()
 
 SLPAPI void aul_finalize()
 {
-	int ret;
 
 	aul_launch_fini();
 
 	if (aul_initialized) {
-		ret = close(aul_fd);
+		close(aul_fd);
 	}
 
 	return;

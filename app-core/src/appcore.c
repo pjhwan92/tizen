@@ -40,7 +40,7 @@
 #define SQLITE_FLUSH_MAX		(1024*1024)
 
 #define PKGNAME_MAX 256
-#define PATH_APP_ROOT "/opt/apps"
+#define PATH_APP_ROOT "/opt/usr/apps"
 #define PATH_RO_APP_ROOT "/usr/apps"
 #define PATH_RES "/res"
 #define PATH_LOCALE "/locale"
@@ -143,7 +143,8 @@ static int __get_dir_name(char *dirname)
 	if (pid < 0)
 		return -1;
 
-	aul_app_get_pkgname_bypid(pid, pkg_name, PKGNAME_MAX);
+	if (aul_app_get_pkgname_bypid(pid, pkg_name, PKGNAME_MAX) != AUL_R_OK)
+		return -1;
 
 	r = snprintf(dirname, PATH_MAX, PATH_APP_ROOT "/%s" PATH_RES PATH_LOCALE,pkg_name);
 	if (r < 0)
@@ -231,18 +232,33 @@ static int __sys_do(struct appcore *ac, enum sys_event event)
 
 static int __sys_lowmem_post(void *data, void *evt)
 {
+	keynode_t *key = evt;
+	int val;
+
+	val = vconf_keynode_get_int(key);
+
+	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)	{
 #if defined(MEMORY_FLUSH_ACTIVATE)
-	struct appcore *ac = data;
-	ac->ops->cb_app(AE_LOWMEM_POST, ac->ops->data, NULL);
+		struct appcore *ac = data;
+		ac->ops->cb_app(AE_LOWMEM_POST, ac->ops->data, NULL);
 #else
-	malloc_trim(0);
+		malloc_trim(0);
 #endif
+	}
 	return 0;
 }
 
 static int __sys_lowmem(void *data, void *evt)
 {
-	return __sys_do(data, SE_LOWMEM);
+	keynode_t *key = evt;
+	int val;
+
+	val = vconf_keynode_get_int(key);
+
+	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)
+		return __sys_do(data, SE_LOWMEM);
+
+	return 0;
 }
 
 static int __sys_lowbatt(void *data, void *evt)

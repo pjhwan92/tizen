@@ -52,6 +52,7 @@ void update_lang(void)
 void update_region(void)
 {
 	char *region;
+	char *r;
 
 	region = vconf_get_str(VCONFKEY_REGIONFORMAT);
 	if (region) {
@@ -66,6 +67,10 @@ void update_region(void)
 		setenv("LC_TELEPHONE", region, 1);
 		setenv("LC_MEASUREMENT", region, 1);
 		setenv("LC_IDENTIFICATION", region, 1);
+		r = setlocale(LC_ALL, "");
+		if (r == NULL) {
+			_DBG("*****appcore setlocale=%s\n", r);
+		}
 		free(region);
 	}
 }
@@ -85,16 +90,26 @@ static int __set_i18n(const char *domain, const char *dir)
 		r = setlocale(LC_ALL, vconf_get_str(VCONFKEY_LANGSET));
 		_DBG("*****appcore setlocale=%s\n", r);
 	}
-	_retvm_if(r == NULL, -1, "appcore: setlocale() error");
+	if (r == NULL) {
+		_ERR("appcore: setlocale() error");
+	}
+	//_retvm_if(r == NULL, -1, "appcore: setlocale() error");
 
 	r = bindtextdomain(domain, dir);
-	_retvm_if(r == NULL, -1, "appcore: bindtextdomain() error");
+	if (r == NULL) {
+		_ERR("appcore: bindtextdomain() error");
+	}
+	//_retvm_if(r == NULL, -1, "appcore: bindtextdomain() error");
 
 	r = textdomain(domain);
-	_retvm_if(r == NULL, -1, "appcore: textdomain() error");
+	if (r == NULL) {
+		_ERR("appcore: textdomain() error");
+	}
+	//_retvm_if(r == NULL, -1, "appcore: textdomain() error");
 
 	return 0;
 }
+
 
 EXPORT_API int appcore_set_i18n(const char *domainname, const char *dirname)
 {

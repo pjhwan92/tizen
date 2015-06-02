@@ -1,25 +1,23 @@
-
 Name:       app-core
 Summary:    Application basic
 Version:    1.2
-Release:    28
-Group:      TO_BE/FILLED_IN
+Release:    48
+Group:      Application Framework
 License:    Apache License, Version 2.0
 Source0:    app-core-%{version}.tar.gz
+Source101:  packaging/core-efl.target
 BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(vconf)
 BuildRequires:  pkgconfig(aul)
 BuildRequires:  pkgconfig(rua)
 BuildRequires:  pkgconfig(dlog)
 BuildRequires:  pkgconfig(x11)
-BuildRequires:  pkgconfig(sysman)
 BuildRequires:  pkgconfig(elementary)
 BuildRequires:  pkgconfig(ecore)
 BuildRequires:  pkgconfig(ecore-x)
 BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  cmake
-BuildRequires:  sysman-devel
 
 
 %description
@@ -78,7 +76,7 @@ Application basics template
 %setup -q 
 
 %build
-CFLAGS="-I/usr/lib/glib-2.0/include/ -I/usr/include/glib-2.0 -I/usr/lib/dbus-1.0/include -I/usr/include/dbus-1.0 -I/usr/include/e_dbus-1 -I/usr/include/ethumb-0 -I/usr/include/edje-1 -I/usr/include/efreet-1 -I/usr/include/embryo-1 -I/usr/include/ecore-1 -I/usr/include/eet-1 -I/usr/include/evas-1 -I/usr/include/eina-1 -I/usr/include/eina-1/eina  $(CFLAGS)" cmake . -DCMAKE_INSTALL_PREFIX=%{_prefix} -DENABLE_GTK=OFF
+%cmake . -DENABLE_GTK=OFF
 
 
 make %{?jobs:-j%jobs}
@@ -86,6 +84,11 @@ make %{?jobs:-j%jobs}
 %install
 rm -rf %{buildroot}
 %make_install
+install -d %{buildroot}%{_prefix}/lib/systemd/user/core-efl.target.wants
+install -m0644 %{SOURCE101} %{buildroot}%{_prefix}/lib/systemd/user/
+
+mkdir -p %{buildroot}/usr/share/license
+cp LICENSE %{buildroot}/usr/share/license/%{name}
 
 
 %post efl -p /sbin/ldconfig
@@ -101,6 +104,7 @@ rm -rf %{buildroot}
 
 
 %files efl
+%manifest app-core.manifest
 %defattr(-,root,root,-)
 %{_libdir}/libappcore-efl.so.*
 
@@ -111,8 +115,12 @@ rm -rf %{buildroot}
 %{_libdir}/pkgconfig/appcore-efl.pc
 
 %files common
+%manifest app-core.manifest
 %defattr(-,root,root,-)
 %{_libdir}/libappcore-common.so.*
+%{_prefix}/lib/systemd/user/core-efl.target
+%{_prefix}/lib/systemd/user/core-efl.target.wants/
+/usr/share/license/%{name}
 
 %files common-devel
 %defattr(-,root,root,-)
