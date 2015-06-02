@@ -91,6 +91,11 @@ struct ui_priv {
 	int (*rot_cb) (enum appcore_rm, void *);
 	void *rot_cb_data;
 	enum appcore_rm rot_mode;
+
+	/*********************************************************************/
+	unsigned int kill_time;
+	Ecore_Timer kill_timer;
+	/*********************************************************************/
 };
 
 static struct ui_priv priv;
@@ -374,6 +379,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->pause)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
+			/*********************************************************************/
+			ui->kill_time = 5000;
+			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
 		}
@@ -390,7 +398,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->resume)
 				r = ui->ops->resume(ui->ops->data);
 			ui->state = AS_RUNNING;
-			 tmp_val = 0;
+			tmp_val = 0;
+			/*********************************************************************/
+			ui->kill_time = 0;
+			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
 		//r = appcore_resume_rotation_cb();
