@@ -389,7 +389,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
-			ui->kill_time = 5;
+			ui->kill_time = 10;
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
 			fclose(fp);
