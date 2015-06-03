@@ -329,7 +329,7 @@ static void __appcore_efl_memory_flush_cb(void)
 	_DBG("[APP %d]   __appcore_efl_memory_flush_cb()", _pid);
 	elm_cache_all_flush();
 }
-
+/*********************************************************************/
 /*static Eina_Bool __force_terminate_cb(void *data){
 	_DBG("[APP %d] FORCE_TERMINATE", _pid);
 
@@ -339,7 +339,7 @@ static void __appcore_efl_memory_flush_cb(void)
 	
 	return ECORE_CALLBACK_CANCEL;
 }*/
-
+/*********************************************************************/
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
@@ -391,7 +391,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			ui->kill_time = 5000;
-			FILE *fp = fopen("/home/developer/test.txt", "w");
+			FILE *fp = fopen("/mnt/mmc/test.txt", "w");
 			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
 			fclose(fp);
 			//ui->kill_timer = ecore_timer_add(100, __force_terminate_cb, ui);
