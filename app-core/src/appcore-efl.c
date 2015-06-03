@@ -330,15 +330,13 @@ static void __appcore_efl_memory_flush_cb(void)
 	elm_cache_all_flush();
 }
 /*********************************************************************/
-/*static Eina_Bool __force_terminate_cb(void *data){
-	_DBG("[APP %d] FORCE_TERMINATE", _pid);
-
+static Eina_Bool __force_terminate_cb(void *data){
 	struct ui_prev *ui = (struct ui_prev *) data;
 	ui->state = AS_DYING;
 	ui->kill_timer = NULL;
 	
 	return ECORE_CALLBACK_CANCEL;
-}*/
+}
 /*********************************************************************/
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
@@ -390,12 +388,11 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
-			ui->kill_time = 5000;
-			FILE *fp = fopen("/mnt/mmc/test.txt", "w");
+			ui->kill_time = 5;
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
 			fclose(fp);
-			//ui->kill_timer = ecore_timer_add(100, __force_terminate_cb, ui);
-			//ecore timer -> a func
+			ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate_cb, ui);
 			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
@@ -416,10 +413,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			tmp_val = 0;
 			/*********************************************************************/
 			ui->kill_time = 0;
-			//if(ui->kill_timer){
-			//	ecore_timer_del(ui->kill_timer);
-			//	ui->kill_timer = NULL;
-			//}
+			if(ui->kill_timer){
+				ecore_timer_del(ui->kill_timer);
+				ui->kill_timer = NULL;
+			}
 			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
