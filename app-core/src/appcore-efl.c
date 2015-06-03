@@ -91,6 +91,11 @@ struct ui_priv {
 	int (*rot_cb) (enum appcore_rm, void *);
 	void *rot_cb_data;
 	enum appcore_rm rot_mode;
+
+	/*********************************************************************/
+	unsigned int kill_time;
+	Ecore_Timer *kill_timer;
+	/*********************************************************************/
 };
 
 static struct ui_priv priv;
@@ -324,7 +329,16 @@ static void __appcore_efl_memory_flush_cb(void)
 	_DBG("[APP %d]   __appcore_efl_memory_flush_cb()", _pid);
 	elm_cache_all_flush();
 }
-
+/*********************************************************************/
+static Eina_Bool __force_terminate_cb(void *data){
+	struct ui_priv *ui = (struct ui_priv *) data;
+	ui->kill_timer = NULL;
+	ui->state = AS_DYING;
+	elm_exit();
+	
+	return ECORE_CALLBACK_CANCEL;
+}
+/*********************************************************************/
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
@@ -374,6 +388,13 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->pause)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
+			/*********************************************************************/
+			ui->kill_time = 10;
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
+			fclose(fp);
+			ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate_cb, ui);
+			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
 		}
@@ -390,7 +411,17 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->resume)
 				r = ui->ops->resume(ui->ops->data);
 			ui->state = AS_RUNNING;
-			 tmp_val = 0;
+			tmp_val = 0;
+			/*********************************************************************/
+			ui->kill_time = 0;
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
+			fclose(fp);
+			if(ui->kill_timer){
+				ecore_timer_del(ui->kill_timer);
+				ui->kill_timer = NULL;
+			}
+			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
 		//r = appcore_resume_rotation_cb();
