@@ -94,7 +94,7 @@ struct ui_priv {
 
 	/*********************************************************************/
 	unsigned int kill_time;
-	//Ecore_Timer *kill_timer;
+	Ecore_Timer *kill_timer;
 	/*********************************************************************/
 };
 
@@ -331,9 +331,10 @@ static void __appcore_efl_memory_flush_cb(void)
 }
 /*********************************************************************/
 static Eina_Bool __force_terminate_cb(void *data){
-	struct ui_prev *ui = (struct ui_prev *) data;
-	ui->state = AS_DYING;
+	struct ui_priv *ui = (struct ui_priv *) data;
 	ui->kill_timer = NULL;
+	ui->state = AS_DYING;
+	elm_exit();
 	
 	return ECORE_CALLBACK_CANCEL;
 }
@@ -413,6 +414,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			tmp_val = 0;
 			/*********************************************************************/
 			ui->kill_time = 0;
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
+			fclose(fp);
 			if(ui->kill_timer){
 				ecore_timer_del(ui->kill_timer);
 				ui->kill_timer = NULL;
