@@ -226,6 +226,9 @@ static int __sys_do(struct appcore *ac, enum sys_event event)
 {
 	struct sys_op *op;
 
+	FILE *fp = fopen ("/mnt/mmc/wow2.txt", "a");
+	fprintf (fp, "sys_do called!\n");
+	fclose (fp);
 	_retv_if(ac == NULL || event >= SE_MAX, -1);
 
 	op = &ac->sops[event];
@@ -264,6 +267,10 @@ static int __sys_lowmem(void *data, void *evt)
 	int val;
 
 	val = vconf_keynode_get_int(key);
+
+	FILE *fp = fopen ("/mnt/mmc/wow1.txt", "a");
+	fprintf (fp, "remaining memory value (enum) : %d\n", val);
+	fclose (fp);
 
 	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)
 		return __sys_do(data, SE_LOWMEM);
@@ -307,11 +314,17 @@ static int __sys_langchg_pre(void *data, void *evt)
 
 static int __sys_langchg(void *data, void *evt)
 {
+	FILE *fp = fopen ("/mnt/mmc/wow_lan.txt", "a");
+	fprintf (fp, "lang changed\n");
+	fclose (fp);
 	return __sys_do(data, SE_LANGCHG);
 }
 
 static int __sys_regionchg_pre(void *data, void *evt)
 {
+	FILE *fp = fopen ("/mnt/mmc/wow_region.txt", "a");
+	fprintf (fp, "region changed\n");
+	fclose (fp);
 	update_region();
 	return 0;
 }
