@@ -391,8 +391,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			unsigned int kill_time = 15;
+			char kk_pkg_name[256];
+			aul_app_get_pkgname_bypid(_pid, kk_pkg_name, 256);
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds\n", ui->name, _pid, kill_time);
+			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds - %s\n", ui->name, _pid, kill_time, kk_pkg_name);
 			fclose(fp);
 			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 			/*********************************************************************/
