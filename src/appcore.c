@@ -243,6 +243,10 @@ static int __sys_lowmem_post(void *data, void *evt)
 
 	val = vconf_keynode_get_int(key);
 
+	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
+	fprintf (fp, "remaining memory value (enum) : %d\n", val);
+	fclose (fp);
+
 	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)	{
 #if defined(MEMORY_FLUSH_ACTIVATE)
 		struct appcore *ac = data;
