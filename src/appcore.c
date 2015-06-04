@@ -95,6 +95,9 @@ static int __app_reset(void *data, bundle *k);
 static int __sys_lowmem_post(void *data, void *evt);
 static int __sys_lowmem(void *data, void *evt);
 static int __sys_lowbatt(void *data, void *evt);
+/************************************************************/
+static int __sys_lowbatt_post(void *data, void *evt);
+/************************************************************/
 static int __sys_langchg_pre(void *data, void *evt);
 static int __sys_langchg(void *data, void *evt);
 static int __sys_regionchg_pre(void *data, void *evt);
@@ -275,6 +278,7 @@ static int __sys_lowbatt_post (void *data, void *evt) {
 		struct appcore *ac = data;
 		ac->ops->cb_app (AE_LOWBATT_POST, ac->ops->data, NULL);
 	}
+	return 0;
 }
 /************************************************************/
 static int __sys_lowbatt(void *data, void *evt)
