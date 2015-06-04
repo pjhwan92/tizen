@@ -92,10 +92,7 @@ struct ui_priv {
 	void *rot_cb_data;
 	enum appcore_rm rot_mode;
 
-	/*********************************************************************/
-	unsigned int kill_time;
 	Ecore_Timer *kill_timer;
-	/*********************************************************************/
 };
 
 static struct ui_priv priv;
@@ -331,6 +328,10 @@ static void __appcore_efl_memory_flush_cb(void)
 }
 /*********************************************************************/
 static Eina_Bool __force_terminate_cb(void *data){
+	FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+	fprintf(fp, "< FORCE TERMINATE > %s shut down\n", ui->name);
+	fclose(fp);
+
 	struct ui_priv *ui = (struct ui_priv *) data;
 	ui->kill_timer = NULL;
 	ui->state = AS_DYING;
@@ -389,11 +390,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
-			ui->kill_time = 10;
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
+			fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds\n", ui->name, ui->kill_time);
 			fclose(fp);
-			ui->kill_timer = ecore_timer_add(ui->kill_time, __force_terminate_cb, ui);
+			ui->kill_timer = ecore_timer_add(15, __force_terminate_cb, ui);
 			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
@@ -413,9 +413,8 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			tmp_val = 0;
 			/*********************************************************************/
-			ui->kill_time = 0;
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "%s: %d\n", ui->name, ui->kill_time);
+			fprintf(fp, "< PAUSED -> RESUME > %s is resumed\n", ui->name);
 			fclose(fp);
 			if(ui->kill_timer){
 				ecore_timer_del(ui->kill_timer);
