@@ -112,6 +112,9 @@ static struct evt_ops evtops[] = {
 	{
 	 .type = _CB_VCONF,
 	 .key.vkey = VCONFKEY_SYSMAN_BATTERY_STATUS_LOW,
+	 /************************************************************/
+	 .vcb_post = __sys_lowbatt_post,
+	 /************************************************************/
 	 .vcb = __sys_lowbatt,
 	 },
 	{
@@ -261,6 +264,19 @@ static int __sys_lowmem(void *data, void *evt)
 	return 0;
 }
 
+/************************************************************/
+static int __sys_lowbatt_post (void *data, void *evt) {
+	keynode_t *key = evt;
+	int val;
+
+	val = vconf_keynode_get_int (key);
+
+	if (val <= VCONFKEY_SYSMAN_BAT_LOW) {
+		struct appcore *ac = data;
+		ac->ops->cb_app (AE_LOWBATT_POST, ac->ops->data, NULL);
+	}
+}
+/************************************************************/
 static int __sys_lowbatt(void *data, void *evt)
 {
 	keynode_t *key = evt;
