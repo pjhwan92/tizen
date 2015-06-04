@@ -330,7 +330,7 @@ static void __appcore_efl_memory_flush_cb(void)
 static Eina_Bool __force_terminate_cb(void *data){
 	struct ui_priv *ui = (struct ui_priv *) data;
 	FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-	fprintf(fp, "< FORCE   TERMINATE > %s shut down\n", ui->name);
+	fprintf(fp, "< FORCE   TERMINATE > %s(%d) shut down\n", ui->name, _pid);
 	fclose(fp);
 
 	ui->kill_timer = NULL;
@@ -392,7 +392,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			/*********************************************************************/
 			unsigned int kill_time = 15;
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds\n", ui->name, kill_time);
+			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds\n", ui->name, _pid, kill_time);
 			fclose(fp);
 			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 			/*********************************************************************/
@@ -415,7 +415,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			tmp_val = 0;
 			/*********************************************************************/
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
+			fprintf(fp, "< PAUSED  -> RESUME > %s(%d) is resumed\n", ui->name, _pid);
 			fclose(fp);
 			if(ui->kill_timer){
 				ecore_timer_del(ui->kill_timer);
