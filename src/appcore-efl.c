@@ -45,6 +45,7 @@
 
 /*************************************************************/
 #include <system/device.h>
+#include <devman/devman.h>
 /*************************************************************/
 
 #define SYSMAN_MAXSTR 100
@@ -390,18 +391,24 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 	case AE_PAUSE:
 		if (ui->state == AS_RUNNING) {
 			_DBG("[APP %d] PAUSE", _pid);
+			/*********************************************************************/
+			if (strcmp (ui->name, "menu-screen")) {
+				unsigned int kill_time = 15;
+				int p = 0, m;
+				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+				p = device_get_battery_pct ();
+				device_memory_get_available (&m);
+				fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%, mem : %d)\n", ui->name, _pid, kill_time, p, m);
+				fclose(fp);
+				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
+			}
+			else {
+				ui->kill_timer = 0;
+			}
+			/*********************************************************************/
 			if (ui->ops->pause)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
-			/*********************************************************************/
-			unsigned int kill_time = 15;
-			int p = 0, ret;
-			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			//ret = device_battery_get_percent (&p);
-			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%)\n", ui->name, _pid, kill_time, p);
-			fclose(fp);
-			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
-			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
 		}
