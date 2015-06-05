@@ -43,6 +43,10 @@
 #include "appcore-internal.h"
 #include "appcore-efl.h"
 
+/*****************************************************/
+#include <system/device.h>
+/*****************************************************/
+
 #define SYSMAN_MAXSTR 100
 #define SYSMAN_MAXARG 16
 #define SYSNOTI_SOCKET_PATH "/tmp/sn"
@@ -329,6 +333,14 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
 	struct ui_priv *ui = data;
+
+	/*****************************************************/
+	int p = 0, ret;
+	ret = device_battery_get_percent (&p);
+	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
+	fprintf (fp, "Battery level : %d\%\n", p);
+	fclose (fp);
+	/*****************************************************/
 
 	_DBG("[APP %d] Event: %d", _pid, event);
 	_ret_if(ui == NULL || event >= AE_MAX);
