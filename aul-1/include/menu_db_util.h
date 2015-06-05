@@ -22,7 +22,6 @@
 
 #include <ail.h>
 #include <string.h>
-#include <stdio.h>
 #include "simple_util.h"
 
 #define MAX_PATH_LEN	1024
@@ -47,13 +46,17 @@ typedef struct {
 	char *pkg_name;		/* package */
 	char *app_path;		/* exec */
 	char *original_app_path;	/* exec */
-	char *pkg_type;		/* x_slp_packagetype */
-	char *hwacc;		/* hwacceleration */
+	char *app_type;		/* x_slp_packagetype */
+	int multiple;		/* x_slp_multiple */
+	int task_manage;	/* x_slp_taskmanage */
+	char *pkg_type;
 } app_info_from_db;
 
 static inline char *_get_pkgname(app_info_from_db *menu_info)
 {
-	return menu_info ? menu_info->pkg_name : NULL;
+	if (menu_info->pkg_name == NULL)
+		return NULL;
+	return menu_info->pkg_name;
 }
 
 static inline char *_get_app_path(app_info_from_db *menu_info)
@@ -61,7 +64,7 @@ static inline char *_get_app_path(app_info_from_db *menu_info)
 	int i = 0;
 	int path_len = -1;
 
-	if (!menu_info || menu_info->app_path == NULL)
+	if (menu_info->app_path == NULL)
 		return NULL;
 
 	while (menu_info->app_path[i] != 0) {
@@ -90,7 +93,27 @@ static inline char *_get_app_path(app_info_from_db *menu_info)
 
 static inline char *_get_original_app_path(app_info_from_db *menu_info)
 {
-	return menu_info ? menu_info->original_app_path : NULL;
+	if (menu_info->original_app_path == NULL)
+		return NULL;
+	return menu_info->original_app_path;
+}
+
+static inline char *_get_app_app_type(app_info_from_db *menu_info)
+{
+	return menu_info->app_type;
+}
+
+static inline int _is_app_multi_inst(app_info_from_db *menu_info)
+{
+	if (menu_info->multiple)
+		return 1;
+	else
+		return 0;
+}
+
+static inline int _get_app_task_manage(app_info_from_db *menu_info)
+{
+	return menu_info->task_manage;
 }
 
 static inline void _free_app_info_from_db(app_info_from_db *menu_info)
@@ -102,8 +125,8 @@ static inline void _free_app_info_from_db(app_info_from_db *menu_info)
 			free(menu_info->app_path);
 		if (menu_info->original_app_path != NULL)
 			free(menu_info->original_app_path);
-		if (menu_info->hwacc != NULL)
-			free(menu_info->hwacc);
+		if (menu_info->app_type != NULL)
+			free(menu_info->app_type);
 		free(menu_info);
 	}
 }
@@ -121,7 +144,7 @@ static inline app_info_from_db *_get_app_info_from_db_by_pkgname(
 		return NULL;
 	}
 
-	ret = ail_get_appinfo(pkgname, &handle);
+	ret = ail_package_get_appinfo(pkgname, &handle);
 	if (ret != AIL_ERROR_OK) {
 		_free_app_info_from_db(menu_info);
 		return NULL;
@@ -141,6 +164,18 @@ static inline app_info_from_db *_get_app_info_from_db_by_pkgname(
 
 	if (menu_info->app_path != NULL)
 		menu_info->original_app_path = strdup(menu_info->app_path);
+
+	ret = ail_appinfo_get_bool(handle, AIL_PROP_X_SLP_MULTIPLE_BOOL,
+		(bool *)&menu_info->multiple);
+
+	ret = ail_appinfo_get_bool(handle, AIL_PROP_X_SLP_TASKMANAGE_BOOL,
+		(bool *)&menu_info->task_manage);
+	
+	ret = ail_appinfo_get_str(handle, AIL_PROP_TYPE_STR, &str);
+	if (str) {
+		menu_info->app_type = strdup(str);
+		str = NULL;
+	}
 
 	ret = ail_appinfo_get_str(handle, AIL_PROP_X_SLP_PACKAGETYPE_STR, &str);
 	if (str) {
@@ -165,18 +200,12 @@ static inline ail_cb_ret_e __appinfo_func(const ail_appinfo_h appinfo, void *use
 {
 	app_info_from_db *menu_info = (app_info_from_db *)user_data;
 	char *package;
-	ail_cb_ret_e ret = AIL_CB_RET_CONTINUE;
-
-	if (!menu_info)
-		return ret;
 
 	ail_appinfo_get_str(appinfo, AIL_PROP_PACKAGE_STR, &package);
-	if (package) {
-		menu_info->pkg_name = strdup(package);
-		ret = AIL_CB_RET_CANCEL;
-	}
 
-	return ret;
+	menu_info->pkg_name = strdup(package);
+	
+	return AIL_CB_RET_CANCEL;	/*return AIL_CB_RET_CONTINUE;*/	
 }
 
 static inline app_info_from_db *_get_app_info_from_db_by_apppath(

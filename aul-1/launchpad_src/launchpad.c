@@ -66,6 +66,11 @@
 #define SQLITE_FLUSH_MAX	(1048576)	/* (1024*1024) */
 #define AUL_POLL_CNT		15
 #define AUL_PR_NAME			16
+#define PATH_APP_ROOT "/opt/apps"
+#define PATH_DATA "/data"
+#define SDK_CODE_COVERAGE "CODE_COVERAGE"
+#define SDK_DYNAMIC_ANALYSIS "DYNAMIC_ANALYSIS"
+#define PATH_DA_SO "/home/developer/sdk_tools/da/da_probe.so"
 
 
 static char *launchpad_cmdline;
@@ -81,6 +86,8 @@ _static_ int __fake_launch_app(int cmd, int pid, bundle * kb);
 _static_ char **__create_argc_argv(bundle * kb, int *margc);
 _static_ int __normal_fork_exec(int argc, char **argv);
 _static_ void __real_launch(const char *app_path, bundle * kb);
+_static_ void __add_history(int caller, int callee, const char *pkgname,
+				bundle *b, const char *app_path);
 static inline int __parser(const char *arg, char *out, int out_size);
 _static_ void __modify_bundle(bundle * kb, int caller_pid,
 			    app_info_from_db * menu_info, int cmd);
@@ -89,7 +96,10 @@ _static_ int __raise_win_by_x(int pid);
 _static_ int __send_to_sigkill(int pid);
 _static_ int __term_app(int pid);
 _static_ int __resume_app(int pid);
-_static_ int __real_send(int clifd, int ret);
+_static_ int __app_process_by_pid(int cmd, 
+	const char *pkg_name, struct ucred *cr);
+_static_ int __nofork_processing(int cmd, int pid, bundle * kb);
+_static_ void __real_send(int clifd, int ret);
 _static_ void __send_result_to_caller(int clifd, int ret);
 _static_ void __launchpad_main_loop(int main_fd);
 _static_ int __launchpad_pre_init(int argc, char **argv);
@@ -114,6 +124,29 @@ _static_ void __set_oom()
 	fclose(fp);
 }
 
+_static_ void __set_sdk_env(app_info_from_db* menu_info, char* str) {
+	char buf[MAX_LOCAL_BUFSZ];
+	int ret;
+
+	_D("key : %s / value : %s", AUL_K_SDK, str);
+	/* http://gcc.gnu.org/onlinedocs/gcc/Cross_002dprofiling.html*/
+	/* GCOV_PREFIX contains the prefix to add to the absolute paths in the object file. */
+	/*		Prefix can be absolute, or relative. The default is no prefix.  */
+	/* GCOV_PREFIX_STRIP indicates the how many initial directory names */
+	/*		to stripoff the hardwired absolute paths. Default value is 0. */
+	if (strncmp(str, SDK_CODE_COVERAGE, strlen(str)) == 0) {
+		snprintf(buf, MAX_LOCAL_BUFSZ, PATH_APP_ROOT"/%s"PATH_DATA, _get_pkgname(menu_info));
+		ret = setenv("GCOV_PREFIX", buf, 1);
+		_D("GCOV_PREFIX : %d", ret);
+		ret = setenv("GCOV_PREFIX_STRIP", "4096", 1);
+		_D("GCOV_PREFIX_STRIP : %d", ret);
+	} else if (strncmp(str, SDK_DYNAMIC_ANALYSIS, strlen(str)) == 0) {
+		ret = setenv("LD_PRELOAD", PATH_DA_SO, 1);
+		_D("LD_PRELOAD : %d", ret);
+	}
+}
+
+
 _static_ void __set_env(app_info_from_db * menu_info, bundle * kb)
 {
 	const char *str;
@@ -129,8 +162,20 @@ _static_ void __set_env(app_info_from_db * menu_info, bundle * kb)
 	if (str != NULL)
 		setenv("APP_START_TIME", str, 1);
 
-	if (menu_info->hwacc != NULL)
-		setenv("HWACC", menu_info->hwacc, 1);
+	if(bundle_get_type(kb, AUL_K_SDK) & BUNDLE_TYPE_ARRAY) {
+		str_array = bundle_get_str_array(kb, AUL_K_SDK, &len);
+		if(str_array != NULL) {
+			for (i = 0; i < len; i++) {
+				_D("index : [%d]", i);
+				__set_sdk_env(menu_info, (char *)str_array[i]);
+			}
+		}
+	} else {
+		str = bundle_get_val(kb, AUL_K_SDK);
+		if(str != NULL) {
+			__set_sdk_env(menu_info, (char *)str);
+		}
+	}
 }
 
 _static_ int __prepare_exec(const char *pkg_name,
@@ -139,7 +184,6 @@ _static_ int __prepare_exec(const char *pkg_name,
 {
 	char *file_name;
 	char process_name[AUL_PR_NAME];
-	int ret;
 
 	/* Set new session ID & new process group ID*/
 	/* In linux, child can set new session ID without check permission */
@@ -151,13 +195,13 @@ _static_ int __prepare_exec(const char *pkg_name,
 	/* SET OOM*/
 	__set_oom();
 
-	/* SET PRIVILEGES*/
-	if(bundle_get_val(kb, AUL_K_PRIVACY_APPID) == NULL) {
-		 _D("pkg_name : %s / pkg_type : %s / app_path : %s ", pkg_name, menu_info->pkg_type, app_path);
-		if ((ret = __set_access(pkg_name, menu_info->pkg_type, app_path)) < 0) {
-			 _D("fail to set privileges - check your package's credential : %d\n", ret);
-			return -1;
-		}
+	/* SET SMACK LABEL */
+	__set_smack((char *)app_path);
+
+	/* SET DAC*/
+	if (__set_dac(pkg_name) < 0) {
+		_D("fail to set DAC - check your package's credential\n");
+		return -1;
 	}
 	/* SET DUMPABLE - for coredump*/
 	prctl(PR_SET_DUMPABLE, 1);
@@ -230,13 +274,11 @@ _static_ void __real_launch(const char *app_path, bundle * kb)
 	app_argv = __create_argc_argv(kb, &app_argc);
 	app_argv[0] = strdup(app_path);
 
-	for (i = 0; i < app_argc; i++) {
-		if( (i%2) == 1)
-			continue;
-		SECURE_LOGD("input argument %d : %s##", i, app_argv[i]);
-	}
+	for (i = 0; i < app_argc; i++)
+		_D("input argument %d : %s##", i, app_argv[i]);
 
 	PERF("setup argument done");
+	_E("lock up test log(no error) : setup argument done");
 
 	/* Temporary log: launch time checking */
 	LOG(LOG_DEBUG, "LAUNCH", "[%s:Platform:launchpad:done]", app_path);
@@ -244,6 +286,45 @@ _static_ void __real_launch(const char *app_path, bundle * kb)
 	__preload_exec(app_argc, app_argv);
 
 	__normal_fork_exec(app_argc, app_argv);
+}
+
+_static_ void __add_history(int caller, int callee, const char *pkgname, 
+				bundle *b, const char *app_path)
+{
+	struct history_data *hd;
+	bundle_raw *kb_data;
+	int len;
+
+	_D("***** HISTORY *****\n");
+	_D("%d ==> %d(%s) \n", caller, callee, pkgname);
+	_D("*******************\n");
+
+	if (b) {
+		bundle_encode(b, (bundle_raw **)&kb_data, &len);
+		hd = (struct history_data *)malloc(sizeof(char) * (len+1029));
+
+		strncpy(hd->pkg_name, pkgname, MAX_PACKAGE_STR_SIZE-1);
+		strncpy(hd->app_path, app_path, MAX_PACKAGE_APP_PATH_SIZE-1);
+		hd->len = len;
+		memcpy(hd->data, kb_data, len);
+
+		__app_send_raw(AUL_UTIL_PID, APP_ADD_HISTORY, (unsigned char *)hd,
+			hd->len+1029);
+		free(kb_data);
+		free(hd);
+	} else {
+		hd = (struct history_data *)malloc(sizeof(char) * 1029);
+
+		strncpy(hd->pkg_name, pkgname, MAX_PACKAGE_STR_SIZE-1);
+		strncpy(hd->app_path, app_path, MAX_PACKAGE_APP_PATH_SIZE-1);
+		hd->len = 0;
+
+		__app_send_raw(AUL_UTIL_PID, APP_ADD_HISTORY, (unsigned char *)hd,
+			1029);
+		free(hd);
+	}
+
+	return;
 }
 
 
@@ -345,10 +426,13 @@ static inline int __parser(const char *arg, char *out, int out_size)
 _static_ void __modify_bundle(bundle * kb, int caller_pid,
 			    app_info_from_db * menu_info, int cmd)
 {
+	char tmp_pid[MAX_PID_STR_BUFSZ];
+
+	snprintf(tmp_pid, MAX_PID_STR_BUFSZ, "%d", caller_pid);
+	bundle_add(kb, AUL_K_CALLER_PID, tmp_pid);
 	bundle_del(kb, AUL_K_PKG_NAME);
-	bundle_del(kb, AUL_K_EXEC);
-	bundle_del(kb, AUL_K_PACKAGETYPE);
-	bundle_del(kb, AUL_K_HWACC);
+	if (cmd == APP_START_RES)
+		bundle_add(kb, AUL_K_WAIT_RESULT, "1");
 
 	/* Parse app_path to retrieve default bundle*/
 	if (cmd == APP_START || cmd == APP_START_RES || cmd == APP_OPEN || cmd == APP_RESUME) {
@@ -364,7 +448,7 @@ _static_ void __modify_bundle(bundle * kb, int caller_pid,
 			char value[256];
 
 			ptr += flag;
-			SECURE_LOGD("parsing app_path: EXEC - %s\n", exe);
+			_D("parsing app_path: EXEC - %s\n", exe);
 
 			do {
 				flag = __parser(ptr, key, sizeof(key));
@@ -502,7 +586,7 @@ _static_ int __foward_cmd(int cmd, bundle *kb, int cr_pid)
 	bundle_add(kb, AUL_K_CALLEE_PID, tmp_pid);
 
 	bundle_encode(kb, &kb_data, &datalen);
-	if ((res = __app_send_raw_with_noreply(pid, cmd, kb_data, datalen)) < 0)
+	if ((res = __app_send_raw(pid, cmd, kb_data, datalen)) < 0)
 		res = AUL_R_ERROR;
 
 	free(kb_data);
@@ -510,19 +594,74 @@ _static_ int __foward_cmd(int cmd, bundle *kb, int cr_pid)
 	return res;
 }
 
-_static_ int __real_send(int clifd, int ret)
+_static_ int __app_process_by_pid(int cmd, 
+	const char *pkg_name, struct ucred *cr)
+{
+	int pid;
+	int ret = -1;
+
+	if (pkg_name == NULL)
+		return -1;
+
+	if ((cr->uid != 0) && (cr->uid != INHOUSE_UID)) {
+		_E("reject by security rule, your uid is %u\n", cr->uid);
+		return -1;
+	}
+
+	pid = atoi(pkg_name);
+	if (pid <= 1) {
+		_E("invalid pid");
+		return -1;
+	}
+
+	switch (cmd) {
+	case APP_RESUME_BY_PID:
+		ret = __resume_app(pid);
+		break;
+	case APP_TERM_BY_PID:
+		ret = __term_app(pid);
+		break;
+	case APP_KILL_BY_PID:
+		if ((ret = __send_to_sigkill(pid)) < 0)
+			_E("fail to killing - %d\n", pid);
+	}
+
+	return ret;
+}
+
+_static_ int __nofork_processing(int cmd, int pid, bundle * kb)
+{
+	int ret = -1;
+	switch (cmd) {
+	case APP_OPEN:
+	case APP_RESUME:
+		_D("resume app's pid : %d\n", pid);
+		if ((ret = __resume_app(pid)) < 0)
+			_E("__resume_app failed. error code = %d", ret);
+		PERF("resume app done");
+		break;
+
+	case APP_START:
+	case APP_START_RES:
+		_D("fake launch pid : %d\n", pid);
+		if ((ret = __fake_launch_app(cmd, pid, kb)) < 0)
+			_E("fake_launch failed. error code = %d", ret);
+		PERF("fake launch done");
+		break;
+	}
+	return ret;
+}
+
+_static_ void __real_send(int clifd, int ret)
 {
 	if (send(clifd, &ret, sizeof(int), MSG_NOSIGNAL) < 0) {
 		if (errno == EPIPE) {
 			_E("send failed due to EPIPE.\n");
-			close(clifd);
-			return -1;
 		}
 		_E("send fail to client");
 	}
 
 	close(clifd);
-	return 0;
 }
 
 _static_ void __send_result_to_caller(int clifd, int ret)
@@ -531,7 +670,6 @@ _static_ void __send_result_to_caller(int clifd, int ret)
 	int wait_count;
 	int cmdline_changed = 0;
 	int cmdline_exist = 0;
-	int r;
 
 	if (clifd == -1)
 		return;
@@ -569,38 +707,8 @@ _static_ void __send_result_to_caller(int clifd, int ret)
 	if (!cmdline_changed)
 		_E("process launched, but cmdline not changed");
 
-	if(__real_send(clifd, ret) < 0) {
-		r = kill(ret, SIGKILL);
-		if (r == -1)
-			_E("send SIGKILL: %s", strerror(errno));
-	}
-	
+	__real_send(clifd, ret);
 	return;
-}
-
-static app_info_from_db *_get_app_info_from_bundle_by_pkgname(
-							const char *pkgname, bundle *kb)
-{
-	app_info_from_db *menu_info;
-
-	menu_info = calloc(1, sizeof(app_info_from_db));
-	if (menu_info == NULL) {
-		return NULL;
-	}
-
-	menu_info->pkg_name = strdup(pkgname);
-	menu_info->app_path = strdup(bundle_get_val(kb, AUL_K_EXEC));
-	if (menu_info->app_path != NULL)
-		menu_info->original_app_path = strdup(menu_info->app_path);
-	menu_info->pkg_type = strdup(bundle_get_val(kb, AUL_K_PACKAGETYPE));
-	menu_info->hwacc = strdup(bundle_get_val(kb, AUL_K_HWACC));
-
-	if (!_get_app_path(menu_info)) {
-		_free_app_info_from_db(menu_info);
-		return NULL;
-	}
-
-	return menu_info;
 }
 
 _static_ void __launchpad_main_loop(int main_fd)
@@ -633,10 +741,21 @@ _static_ void __launchpad_main_loop(int main_fd)
 	INIT_PERF(kb);
 	PERF("packet processing start");
 
-	pkg_name = bundle_get_val(kb, AUL_K_PKG_NAME);
-	SECURE_LOGD("pkg name : %s\n", pkg_name);
+	if (pkt->cmd == APP_RESULT || pkt->cmd == APP_CANCEL) {
+		pid = __foward_cmd(pkt->cmd, kb, cr.pid);
+		goto end;
+	}
 
-	menu_info = _get_app_info_from_bundle_by_pkgname(pkg_name, kb);
+	pkg_name = bundle_get_val(kb, AUL_K_PKG_NAME);
+	_D("pkg name : %s\n", pkg_name);
+
+	if (pkt->cmd == APP_TERM_BY_PID || pkt->cmd == APP_RESUME_BY_PID ||
+	    pkt->cmd == APP_KILL_BY_PID) {
+		pid = __app_process_by_pid(pkt->cmd, pkg_name, &cr);
+		goto end;
+	}
+
+	menu_info = _get_app_info_from_db_by_pkgname(pkg_name);
 	if (menu_info == NULL) {
 		_D("such pkg no found");
 		goto end;
@@ -657,14 +776,29 @@ _static_ void __launchpad_main_loop(int main_fd)
 
 	PERF("get package information & modify bundle done");
 
-	{
+	if (_is_app_multi_inst(menu_info) == 0)
+		pid = __proc_iter_cmdline(NULL, (void *)app_path);
+
+	PERF("find pid by searching proc file system done");
+
+	if (pid > 0) {
+		int ret;
+
+		if (cr.pid == pid) {
+			_D("caller process & callee process is same.[%s:%d]",
+			   pkg_name, pid);
+			pid = -ELOCALLAUNCH_ID;
+		} else if ((ret = __nofork_processing(pkt->cmd, pid, kb)) < 0)
+			pid = ret;
+	} else if (pkt->cmd != APP_RESUME) {
 		pid = fork();
 		if (pid == 0) {
 			PERF("fork done");
-			_D("lock up test log(no error) : fork done");
+			_E("lock up test log(no error) : fork done");
 
 			close(clifd);
 			close(main_fd);
+			ail_db_close();
 			__signal_unset_sigchld();
 			__signal_fini();
 
@@ -672,23 +806,23 @@ _static_ void __launchpad_main_loop(int main_fd)
 			unlink(sock_path);
 
 			PERF("prepare exec - first done");
-			_D("lock up test log(no error) : prepare exec - first done");
+			_E("lock up test log(no error) : prepare exec - first done");
 
 			if (__prepare_exec(pkg_name, app_path,
 					   menu_info, kb) < 0) {
-				SECURE_LOGE("preparing work fail to launch - "
+				_E("preparing work fail to launch - "
 				   "can not launch %s\n", pkg_name);
 				exit(-1);
 			}
 
 			PERF("prepare exec - second done");
-			_D("lock up test log(no error) : prepare exec - second done");
+			_E("lock up test log(no error) : prepare exec - second done");
 
 			__real_launch(app_path, kb);
 
 			exit(-1);
 		}
-		SECURE_LOGD("==> real launch pid : %d %s\n", pid, app_path);
+		_D("==> real launch pid : %d %s\n", pid, app_path);
 		is_real_launch = 1;
 	}
 
@@ -696,6 +830,21 @@ _static_ void __launchpad_main_loop(int main_fd)
 	__send_result_to_caller(clifd, pid);
 
 	if (pid > 0) {
+		int ret;
+		ret = ac_check_launch_privilege(pkg_name, menu_info->pkg_type, pid);
+		_D("ac_check_launch_privilege : %d", ret);
+		switch (pkt->cmd) {
+		case APP_OPEN:
+		case APP_RESUME:
+			__add_history(cr.pid, pid, pkg_name, NULL, app_path);
+			break;
+		case APP_START:
+		case APP_START_RES:
+			__add_history(cr.pid, pid, pkg_name, kb, app_path);
+			break;
+		default:
+			_D("no launch case");
+		}
 		if (is_real_launch) {
 			/*TODO: retry*/
 			__signal_block_sigchld();
@@ -727,6 +876,9 @@ _static_ int __launchpad_pre_init(int argc, char **argv)
 
 	/* signal init*/
 	__signal_init();
+
+	/* dac init*/
+	__dac_init();
 
 	/* get my(launchpad) command line*/
 	launchpad_cmdline = __proc_get_cmdline_bypid(getpid());
