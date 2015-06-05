@@ -395,9 +395,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			unsigned int kill_time = 15;
-			int p, ret;
+			int p = 0, ret;
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			ret = device_battery_get_percent (&p);
+			//ret = device_battery_get_percent (&p);
 			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%)\n", ui->name, _pid, kill_time, p);
 			fclose(fp);
 			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
