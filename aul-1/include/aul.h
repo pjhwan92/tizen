@@ -25,6 +25,7 @@
 
 #include <errno.h>
 #include <bundle.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,6 +71,9 @@ extern "C" {
  * @brief Return values in AUL.
  */
 typedef enum _aul_return_val {
+	AUL_R_EREJECTED = -14,		/**< App disable for mode */
+	AUL_R_ENOAPP = -13,		/**< Failed to find app ID or pkg ID */
+	AUL_R_EHIDDENFORGUEST = -11,	/**< App hidden for guest mode */
 	AUL_R_ENOLAUNCHPAD = -10,	/**< no launchpad */
 	AUL_R_ETERMINATING = -9,	/**< application terminating */
 	AUL_R_EILLACC = -8,		/**< Illegal Access */
@@ -121,7 +125,9 @@ enum app_status {
 typedef enum _aul_type{
 	AUL_START,
 	AUL_RESUME,
-	AUL_TERMINATE
+	AUL_TERMINATE,
+	AUL_TERMINATE_BGAPP,
+	AUL_PAUSE,
 }aul_type;
 
 /** AUL internal private key */
@@ -147,6 +153,11 @@ typedef enum _aul_type{
 /** AUL public key - To check callee's secuirty */
 #define AUL_K_CALLEE_PID	"__AUL_CALLEE_PID__"
 
+/** AUL public key - added for multiuser mode */
+#define AUL_K_CALLER_UID	"__AUL_CALLER_UID__"
+/** AUL public key - added for multiuser mode */
+#define AUL_K_CALLEE_UID	"__AUL_CALLEE_UID__"
+
 /** AUL public key - To check caller's secuirty */
 #define AUL_K_CALLER_APPID	"__AUL_CALLER_APPID__"
 /** AUL public key - To check caller's secuirty */
@@ -169,6 +180,9 @@ typedef enum _aul_type{
 
 /** AUL public key - To force launch app selector instead of lauchingn default app */
 #define AUL_K_FORCE_LAUNCH_APP_SELECTOR	"__AUL_FORCE_LAUNCH_APP_SELECTOR__"
+
+/** AUL public key - To support debug argument */
+#define AUL_K_DEBUG	"__AUL_DEBUG__"
 
 /** AUL public key - To support SDK */
 #define AUL_K_SDK	"__AUL_SDK__"
@@ -201,6 +215,8 @@ typedef enum _aul_type{
 #define AUL_K_APPID		"__AUL_APPID__"
 /** AUL internal private key */
 #define AUL_K_PID		"__AUL_PID__"
+/** AUL internal private key - To support data control*/
+#define AUL_K_DATA_CONTROL_TYPE   "__AUL_DATA_CONTROL_TYPE__"
 
 #define PRIVACY_POPUP "tizenprv00.privacy-popup"
 
@@ -230,10 +246,10 @@ typedef int (*aul_handler_fn) (aul_type type, bundle * b, void *data);
  * @retval	AUL_R_OK	- success
  * @retval	AUL_R_ECANCELD	- aul handler was installed already by others
  * @retval	AUL_R_ECOMM	- error to create internal ipc
- * @retval	AUL_R_ERROR	- error to attach glib main loop or ecore main loop
+ * @retval	AUL_R_ERROR	- error to attach glib main loop
  *
  * @warning	If you use AppCore, you should NOT use this API.\n
- *		You need glib main loop or ecore main loop.\n
+ *		You need glib main loop.\n
  * @pre
  *	you must have aul handler to use this API.
  *	aul_luanch_init register aul handler.
@@ -262,12 +278,15 @@ typedef int (*aul_handler_fn) (aul_type type, bundle * b, void *data);
  *      return 0;
  * }
  *
+ * static GMainLoop *mainloop = NULL;
+ *
  * int main(int argc, char **argv)
  * {
- *	ecore_init();
  *      aul_launch_init(aul_handler,NULL);
  *      aul_launch_argv_handler(argc, argv);
- *	ecore_main_loop_begin();
+ *
+ *      mainloop = g_main_loop_new(NULL, FALSE);
+ *      g_main_loop_run(mainloop);
  * }
  *
  * @endcode
@@ -605,6 +624,9 @@ int aul_resume_pid(int pid);
  *	If you have not the permission, this API return AUL_R_ERROR. \n
 */
 int aul_terminate_pid(int pid);
+int aul_terminate_bgapp_pid(int pid);
+int aul_terminate_pid_without_restart(int pid);
+int aul_terminate_pid_async(int pid);
 
 /** @} */
 
@@ -1598,12 +1620,41 @@ int aul_listen_app_dead_signal(int (*func) (int, void *), void *data);
 int aul_listen_app_launch_signal(int (*func) (int, void *), void *data);
 
 
+const char *aul_get_app_external_root_path(void);
+const char *aul_get_app_root_path(void);
+const char *aul_get_app_data_path(void);
+const char *aul_get_app_cache_path(void);
+const char *aul_get_app_resource_path(void);
+const char *aul_get_app_shared_data_path(void);
+const char *aul_get_app_shared_resource_path(void);
+const char *aul_get_app_shared_trusted_path(void);
+const char *aul_get_app_external_data_path(void);
+const char *aul_get_app_external_cache_path(void);
+const char *aul_get_app_external_shared_data_path(void);
+const char *aul_get_app_specific_path(void);
+const char *aul_get_app_external_specific_path(void);
+int aul_get_app_shared_data_path_by_appid(const char *app_id, char **path);
+int aul_get_app_shared_resource_path_by_appid(const char *app_id, char **path);
+int aul_get_app_shared_trusted_path_by_appid(const char *app_id, char **path);
+int aul_get_app_external_shared_data_path_by_appid(const char *app_id, char **path);
+int aul_get_usr_app_shared_data_path_by_appid(const char *app_id, char **path, uid_t uid);
+int aul_get_usr_app_shared_resource_path_by_appid(const char *app_id, char **path, uid_t uid);
+int aul_get_usr_app_shared_trusted_path_by_appid(const char *app_id, char **path, uid_t uid);
+int aul_get_usr_app_external_shared_data_path_by_appid(const char *app_id, char **path, uid_t uid);
+
+
 typedef int (*subapp_fn)(void *data);
 
 int aul_set_subapp(subapp_fn cb, void *data);
 int aul_subapp_terminate_request_pid(int pid);
 int aul_is_subapp(void);
 
+typedef int (*data_control_provider_handler_fn) (bundle *b, int request_id, void *data);
+int aul_set_data_control_provider_cb(data_control_provider_handler_fn handler);
+int aul_unset_data_control_provider_cb(void);
+int aul_pause_app(const char *appid);
+int aul_pause_pid(int pid);
+int aul_reload_appinfo(void);
 
 /** @} */
 

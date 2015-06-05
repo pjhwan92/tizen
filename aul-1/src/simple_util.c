@@ -40,13 +40,13 @@
 #define OPTION_VALGRIND_NAME	"valgrind"
 #define OPTION_VALGRIND_SIZE	8
 
-
 #define PROC_STAT_GID_POS	5
 
+#define MAX_CMD_BUFSZ 1024
 
 static inline int __read_proc(const char *path, char *buf, int size);
-static inline int __find_pid_by_cmdline(const char *dname,
-				      const char *cmdline, void *priv);
+static inline int __find_pid_by_cmdline(const char *dname, const char *cmdline,
+		void *priv, uid_t uid);
 static inline int __get_pgid_from_stat(int pid);
 
 
@@ -74,8 +74,8 @@ static inline int __read_proc(const char *path, char *buf, int size)
 	return ret;
 }
 
-static inline int __find_pid_by_cmdline(const char *dname,
-				      const char *cmdline, void *priv)
+static inline int __find_pid_by_cmdline(const char *dname, const char *cmdline,
+		void *priv, uid_t uid)
 {
 	char *apppath;
 	int pid = 0;
@@ -91,7 +91,7 @@ static inline int __find_pid_by_cmdline(const char *dname,
 }
 
 int __proc_iter_cmdline(
-	int (*iterfunc)(const char *dname, const char *cmdline, void *priv),
+	int (*iterfunc)(const char *dname, const char *cmdline, void *priv, uid_t uid),
 		    void *priv)
 {
 	DIR *dp;
@@ -100,8 +100,9 @@ int __proc_iter_cmdline(
 	int ret;
 	char buf[MAX_LOCAL_BUFSZ];
 	char *cmdline;
-
+	uid_t uid;
 	dp = opendir("/proc");
+
 	if (dp == NULL) {
 		return -1;
 	}
@@ -112,6 +113,8 @@ int __proc_iter_cmdline(
 	while ((dentry = readdir(dp)) != NULL) {
 		if (!isdigit(dentry->d_name[0]))
 			continue;
+
+		uid = __proc_get_usr_bypid(atoi(dentry->d_name));
 
 		snprintf(buf, sizeof(buf), "/proc/%s/cmdline", dentry->d_name);
 		ret = __read_proc(buf, buf, sizeof(buf));
@@ -129,7 +132,7 @@ int __proc_iter_cmdline(
 				}
 			}
 		}
-		pid = iterfunc(dentry->d_name, cmdline, priv);
+		pid = iterfunc(dentry->d_name, cmdline, priv, uid);
 
 		if (pid > 0) {
 			closedir(dp);
@@ -141,10 +144,28 @@ int __proc_iter_cmdline(
 	return -1;
 }
 
+
+uid_t __proc_get_usr_bypid(int pid)
+{
+	char buf[MAX_CMD_BUFSZ];
+	int ret;
+	uid_t uid;
+	struct stat DirStat;
+	snprintf(buf, sizeof(buf), "/proc/%d", pid);
+	ret = stat(buf, &DirStat);
+	if (ret < 0)
+		uid = (uid_t)-1;
+	else
+		uid = DirStat.st_uid;
+	return uid;
+}
+
+
+
+
+
 char *__proc_get_cmdline_bypid(int pid)
 {
-#define MAX_CMD_BUFSZ 1024
-
 	char buf[MAX_CMD_BUFSZ];
 	int ret;
 
@@ -167,7 +188,7 @@ char *__proc_get_cmdline_bypid(int pid)
 			}
 			ptr++;
 
-			if (*ptr == NULL)
+			if (!(*ptr))
 				break;
 
 			// ignore trailing "--"
@@ -186,6 +207,20 @@ char *__proc_get_cmdline_bypid(int pid)
 	}
 
 	return strdup(buf);
+}
+
+char *__proc_get_exe_bypid(int pid)
+{
+	char buf[MAX_CMD_BUFSZ];
+	char buf2[MAX_CMD_BUFSZ];
+	ssize_t len;
+
+	snprintf(buf, sizeof(buf), "/proc/%d/exe", pid);
+	len=readlink(buf,buf2,MAX_CMD_BUFSZ);
+	if (len<=0)
+		return NULL;
+	buf2[len] = 0;
+	return strdup(buf2);
 }
 
 static inline int __get_pgid_from_stat(int pid)
@@ -224,14 +259,14 @@ static inline int __get_pgid_from_stat(int pid)
 	return pid;
 }
 
-int __proc_iter_pgid(int pgid, int (*iterfunc) (int pid, void *priv),
+int __proc_iter_pgid(int pgid, int (*iterfunc) (int pid, void *priv,uid_t uid),
 		     void *priv)
 {
 	DIR *dp;
 	struct dirent *dentry;
 	int _pgid;
 	int ret = -1;
-
+	uid_t uid;
 	dp = opendir("/proc");
 	if (dp == NULL) {
 		return -1;
@@ -243,7 +278,8 @@ int __proc_iter_pgid(int pgid, int (*iterfunc) (int pid, void *priv),
 
 		_pgid = __get_pgid_from_stat(atoi(dentry->d_name));
 		if (pgid == _pgid) {
-			ret = iterfunc(atoi(dentry->d_name), priv);
+			uid =  __proc_get_usr_bypid(atoi(dentry->d_name));
+			ret = iterfunc(atoi(dentry->d_name), priv,uid);
 			if (ret >= 0)
 				break;
 		}

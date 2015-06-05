@@ -26,19 +26,28 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <dlog.h>
+#include <tzplatform_config.h>
+
+#define GLOBAL_USER tzplatform_getuid(TZ_SYS_GLOBALAPP_USER)
+#define DEFAULT_USER tzplatform_getuid(TZ_SYS_DEFAULT_USER)
+
+#undef LOG_TAG
+#define LOG_TAG "AUL"
 
 #ifdef LAUNCHPAD_LOG
 #undef LOG_TAG
 #define LOG_TAG "AUL_PAD"
-#else
-#undef LOG_TAG
-#define LOG_TAG "AUL"
 #endif
+
 #ifdef AMD_LOG
 #undef LOG_TAG
 #define LOG_TAG "AUL_AMD"
 #endif
 
+#ifdef AGENT_LOG
+#undef LOG_TAG
+#define LOG_TAG "AUL_AGENT"
+#endif
 
 #define MAX_LOCAL_BUFSZ 128
 #define MAX_PID_STR_BUFSZ 20
@@ -63,11 +72,13 @@
 } while (0)
 
 int __proc_iter_cmdline(int (*iterfunc)
-			 (const char *dname, const char *cmdline, void *priv),
+			 (const char *dname, const char *cmdline, void *priv, uid_t uid),
 			void *priv);
-int __proc_iter_pgid(int pgid, int (*iterfunc) (int pid, void *priv),
+int __proc_iter_pgid(int pgid, int (*iterfunc) (int pid, void *priv,uid_t uid),
 		     void *priv);
 char *__proc_get_cmdline_bypid(int pid);
+char *__proc_get_exe_bypid(int pid);
+uid_t __proc_get_usr_bypid(int pid);
 
 static inline const char *FILENAME(const char *filename)
 {
