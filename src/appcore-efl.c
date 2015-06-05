@@ -43,9 +43,9 @@
 #include "appcore-internal.h"
 #include "appcore-efl.h"
 
-/*****************************************************/
+/*************************************************************/
 #include <system/device.h>
-/*****************************************************/
+/*************************************************************/
 
 #define SYSMAN_MAXSTR 100
 #define SYSMAN_MAXARG 16
@@ -95,6 +95,8 @@ struct ui_priv {
 	int (*rot_cb) (enum appcore_rm, void *);
 	void *rot_cb_data;
 	enum appcore_rm rot_mode;
+
+	Ecore_Timer *kill_timer;
 };
 
 static struct ui_priv priv;
@@ -328,19 +330,24 @@ static void __appcore_efl_memory_flush_cb(void)
 	_DBG("[APP %d]   __appcore_efl_memory_flush_cb()", _pid);
 	elm_cache_all_flush();
 }
+/*********************************************************************/
+static Eina_Bool __force_terminate_cb(void *data){
+	struct ui_priv *ui = (struct ui_priv *) data;
+	FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+	fprintf(fp, "< FORCE   TERMINATE > %s(%d) shut down\n", ui->name, _pid);
+	fclose(fp);
 
+	ui->kill_timer = NULL;
+	ui->state = AS_DYING;
+	elm_exit();
+	
+	return ECORE_CALLBACK_CANCEL;
+}
+/*********************************************************************/
 static void __do_app(enum app_event event, void *data, bundle * b)
 {
 	int r = -1;
 	struct ui_priv *ui = data;
-
-	/*****************************************************/
-	int p = 0, ret;
-	ret = device_battery_get_percent (&p);
-	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
-	fprintf (fp, "Battery level : %d\%\n", p);
-	fclose (fp);
-	/*****************************************************/
 
 	_DBG("[APP %d] Event: %d", _pid, event);
 	_ret_if(ui == NULL || event >= AE_MAX);
@@ -386,6 +393,15 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->pause)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
+			/*********************************************************************/
+			unsigned int kill_time = 15;
+			int p = 0, ret;
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+			//ret = device_battery_get_percent (&p);
+			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%)\n", ui->name, _pid, kill_time, p);
+			fclose(fp);
+			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
+			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
 		}
@@ -402,7 +418,16 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			if (ui->ops->resume)
 				r = ui->ops->resume(ui->ops->data);
 			ui->state = AS_RUNNING;
-			 tmp_val = 0;
+			tmp_val = 0;
+			/*********************************************************************/
+			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+			fprintf(fp, "< PAUSED  -> RESUME > %s(%d) is resumed\n", ui->name, _pid);
+			fclose(fp);
+			if(ui->kill_timer){
+				ecore_timer_del(ui->kill_timer);
+				ui->kill_timer = NULL;
+			}
+			/*********************************************************************/
 		}
 		/*TODO : rotation start*/
 		//r = appcore_resume_rotation_cb();
