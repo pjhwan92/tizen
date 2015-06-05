@@ -50,8 +50,8 @@ __app_dbus_signal_filter(DBusConnection *conn, DBusMessage *message,
 	if (sender == NULL)
 		return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-	if (dbus_bus_get_unix_user(conn, sender, &error) != 0) {
-		_E("reject by security issue - no allowed sender\n");
+	if (dbus_bus_get_unix_user(conn, sender, &error) < 0) {
+		_E("reject because of invalid user ID\n");
 		dbus_error_free(&error);
 		return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 	}
@@ -96,7 +96,7 @@ int __app_dbus_signal_handler_init()
 		return 0;
 
 	dbus_error_init(&error);
-	bus = dbus_bus_get_private(DBUS_BUS_SYSTEM, &error);
+	bus = dbus_bus_get_private(DBUS_BUS_SESSION, &error);
 	if (!bus) {
 		_E("Failed to connect to the D-BUS daemon: %s", error.message);
 		dbus_error_free(&error);
@@ -115,7 +115,7 @@ int __app_dbus_signal_handler_init()
 		return -1;
 	}
 
-	if (dbus_connection_add_filter(bus, 
+	if (dbus_connection_add_filter(bus,
 		__app_dbus_signal_filter, NULL, NULL) == FALSE)
 		return -1;
 

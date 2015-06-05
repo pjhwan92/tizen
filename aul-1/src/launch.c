@@ -22,6 +22,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,7 @@ static int __app_start_internal(gpointer data);
 static int __app_launch_local(bundle *b);
 static int __send_result_to_launchpad(int fd, int res);
 
+static data_control_provider_handler_fn __dc_handler = NULL;
 extern  int aul_launch_fini();
 
 int aul_is_initialized()
@@ -71,8 +73,19 @@ static int __call_aul_handler(aul_type type, bundle *kb)
 
 int app_start(bundle *kb)
 {
+	const char *str = NULL;
+
 	_app_start_res_prepare(kb);
 	__call_aul_handler(AUL_START, kb);
+	// Handle the DataControl callback
+	str = bundle_get_val(kb, AUL_K_DATA_CONTROL_TYPE);
+	if (str != NULL && strcmp(str, "CORE") == 0)
+	{
+		if (__dc_handler != NULL)
+		{
+			__dc_handler(kb, 0, NULL); // bundle, request_id, data
+		}
+	}
 	return 0;
 }
 
@@ -87,6 +100,107 @@ static int app_terminate()
 	__call_aul_handler(AUL_TERMINATE, NULL);
 	return 0;
 }
+
+static int bgapp_terminate(void)
+{
+	__call_aul_handler(AUL_TERMINATE_BGAPP, NULL);
+	return 0;
+}
+
+static int app_pause(void)
+{
+	__call_aul_handler(AUL_PAUSE, NULL);
+	return 0;
+}
+
+
+/**
+ * @brief	encode kb and send it to 'pid'
+ * @param[in]	pid		receiver's pid
+ * @param[in]	cmd		message's status (APP_START | APP_RESULT)
+ * @param[in]	kb		data
+ */
+SLPAPI int app_agent_send_cmd(int uid, int cmd, bundle *kb)
+{
+	int datalen;
+	bundle_raw *kb_data;
+	int res;
+
+	bundle_encode(kb, &kb_data, &datalen);
+	if ((res = __app_agent_send_raw(uid, cmd, kb_data, datalen)) < 0) {
+		switch (res) {
+		case -EINVAL:
+			res = AUL_R_EINVAL;
+			break;
+		case -ECOMM:
+			res = AUL_R_ECOMM;
+			break;
+		case -EAGAIN:
+			res = AUL_R_ETIMEOUT;
+			break;
+		case -ELOCALLAUNCH_ID:
+			res = AUL_R_LOCAL;
+			break;
+		case -EILLEGALACCESS:
+			res = AUL_R_EILLACC;
+			break;
+		case -ETERMINATING:
+			res = AUL_R_ETERMINATING;
+			break;
+		case -ENOLAUNCHPAD:
+			res = AUL_R_ENOLAUNCHPAD;
+			break;
+		case -EREJECTED:
+			res = AUL_R_EREJECTED;
+			break;
+		default:
+			res = AUL_R_ERROR;
+		}
+	}
+	free(kb_data);
+
+	return res;
+}
+
+SLPAPI int app_agent_send_cmd_with_noreply(int uid, int cmd, bundle *kb)
+{
+	int datalen;
+	bundle_raw *kb_data;
+	int res;
+
+	bundle_encode(kb, &kb_data, &datalen);
+	if ((res = __app_send_raw_with_noreply(uid, cmd, kb_data, datalen)) < 0) {
+		switch (res) {
+		case -EINVAL:
+			res = AUL_R_EINVAL;
+			break;
+		case -ECOMM:
+			res = AUL_R_ECOMM;
+			break;
+		case -EAGAIN:
+			res = AUL_R_ETIMEOUT;
+			break;
+		case -ELOCALLAUNCH_ID:
+			res = AUL_R_LOCAL;
+			break;
+		case -EILLEGALACCESS:
+			res = AUL_R_EILLACC;
+			break;
+		default:
+			res = AUL_R_ERROR;
+		}
+	}
+	free(kb_data);
+
+	return res;
+}
+
+
+
+
+
+
+
 
 
 /**
@@ -170,7 +284,7 @@ SLPAPI int app_send_cmd_with_noreply(int pid, int cmd, bundle *kb)
 static void __clear_internal_key(bundle *kb)
 {
 	bundle_del(kb, AUL_K_CALLER_PID);
-	bundle_del(kb, AUL_K_PKG_NAME);
+	bundle_del(kb, AUL_K_APPID);
 	bundle_del(kb, AUL_K_WAIT_RESULT);
 	bundle_del(kb, AUL_K_SEND_RESULT);
 	bundle_del(kb, AUL_K_ARGV0);
@@ -225,19 +339,19 @@ static int __app_resume_local()
  * @brief	start caller with kb
  * @return	callee's pid
  */
-int app_request_to_launchpad(int cmd, const char *pkgname, bundle *kb)
+int app_request_to_launchpad(int cmd, const char *appid, bundle *kb)
 {
 	int must_free = 0;
 	int ret = 0;
 
-	SECURE_LOGD("launch request : %s", pkgname);
+	SECURE_LOGD("launch request : %s", appid);
 	if (kb == NULL) {
 		kb = bundle_create();
 		must_free = 1;
 	} else
 		__clear_internal_key(kb);
 
-	bundle_add(kb, AUL_K_PKG_NAME, pkgname);
+	bundle_add(kb, AUL_K_APPID, appid);
 	__set_stime(kb);
 	ret = app_send_cmd(AUL_UTIL_PID, cmd, kb);
 
@@ -285,7 +399,7 @@ static int __send_result_to_launchpad(int fd, int res)
 }
 
 /**
- * @brief	caller & callee's sock handler	
+ * @brief	caller & callee's sock handler
  */
 int aul_sock_handler(int fd)
 {
@@ -310,7 +424,7 @@ int aul_sock_handler(int fd)
 		return -1;
 	}
 
-	if (pkt->cmd != APP_RESULT && pkt->cmd != APP_CANCEL) {
+	if (pkt->cmd != APP_RESULT && pkt->cmd != APP_CANCEL && pkt->cmd != APP_TERM_BY_PID_ASYNC) {
 		ret = __send_result_to_launchpad(clifd, 0);
 		if (ret < 0) {
 			free(pkt);
@@ -337,7 +451,12 @@ int aul_sock_handler(int fd)
 		break;
 
 	case APP_TERM_BY_PID:	/* run in callee */
+	case APP_TERM_BY_PID_ASYNC:
 		app_terminate();
+		break;
+
+	case APP_TERM_BGAPP_BY_PID:
+		bgapp_terminate();
 		break;
 
 	case APP_TERM_REQ_BY_PID:	/* run in callee */
@@ -363,6 +482,10 @@ int aul_sock_handler(int fd)
 			goto err;
 		app_key_event(kbundle);
 		bundle_free(kbundle);
+		break;
+
+	case APP_PAUSE_BY_PID:
+		app_pause();
 		break;
 
 	default:
@@ -396,7 +519,7 @@ int aul_make_bundle_from_argv(int argc, char **argv, bundle **kb)
 			_E("Malloc failed");
 			return AUL_R_ERROR;
 		}
-	
+
 		bundle_add(*kb, AUL_K_ARGV0, buf);
 	}
 	if (buf) {		/*Prevent FIX: ID 38717 */
@@ -520,6 +643,45 @@ SLPAPI int aul_terminate_pid(int pid)
 	return ret;
 }
 
+SLPAPI int aul_terminate_bgapp_pid(int pid)
+{
+        char pkgname[MAX_PID_STR_BUFSZ];
+        int ret;
+
+        if (pid <= 0)
+                return AUL_R_EINVAL;
+
+        snprintf(pkgname, MAX_PID_STR_BUFSZ, "%d", pid);
+        ret = app_request_to_launchpad(APP_TERM_BGAPP_BY_PID, pkgname, NULL);
+        return ret;
+}
+
+SLPAPI int aul_terminate_pid_without_restart(int pid)
+{
+	char pkgname[MAX_PID_STR_BUFSZ];
+	int ret;
+
+	if (pid <= 0)
+		return AUL_R_EINVAL;
+
+	snprintf(pkgname, MAX_PID_STR_BUFSZ, "%d", pid);
+	ret = app_request_to_launchpad(APP_TERM_BY_PID_WITHOUT_RESTART, pkgname, NULL);
+	return ret;
+}
+
+SLPAPI int aul_terminate_pid_async(int pid)
+{
+	char pkgname[MAX_PID_STR_BUFSZ];
+	int ret;
+
+	if (pid <= 0)
+		return AUL_R_EINVAL;
+
+	snprintf(pkgname, MAX_PID_STR_BUFSZ, "%d", pid);
+	ret = app_request_to_launchpad(APP_TERM_BY_PID_ASYNC, pkgname, NULL);
+	return ret;
+}
+
 SLPAPI int aul_kill_pid(int pid)
 {
 	char pkgname[MAX_PID_STR_BUFSZ];
@@ -531,6 +693,51 @@ SLPAPI int aul_kill_pid(int pid)
 	snprintf(pkgname, MAX_PID_STR_BUFSZ, "%d", pid);
 	ret = app_request_to_launchpad(APP_KILL_BY_PID, pkgname, NULL);
 	return ret;
+}
+
+SLPAPI int aul_set_data_control_provider_cb(data_control_provider_handler_fn handler)
+{
+	__dc_handler = handler;
+	return 0;
+}
+
+SLPAPI int aul_unset_data_control_provider_cb(void)
+{
+	__dc_handler = NULL;
+	return 0;
+}
+
+SLPAPI int aul_pause_app(const char *appid)
+{
+	int ret;
+
+	if (appid == NULL)
+		return AUL_R_EINVAL;
+
+	ret = app_request_to_launchpad(APP_PAUSE, appid, NULL);
+	return ret;
+}
+
+SLPAPI int aul_pause_pid(int pid)
+{
+	char app_pid[MAX_PID_STR_BUFSZ];
+	int ret;
+
+	if (pid <= 0)
+		return AUL_R_EINVAL;
+
+	snprintf(app_pid, MAX_PID_STR_BUFSZ, "%d", pid);
+	ret = app_request_to_launchpad(APP_PAUSE_BY_PID, app_pid, NULL);
+	return ret;
+}
+
+SLPAPI int aul_reload_appinfo(void)
+{
+	char pkgname[MAX_PID_STR_BUFSZ];
+
+	snprintf(pkgname, MAX_PID_STR_BUFSZ, "%d", getpid());
+
+	return app_request_to_launchpad(AMD_RELOAD_APPINFO, pkgname, NULL);
 }
 
 /* vi: set ts=8 sts=8 sw=8: */

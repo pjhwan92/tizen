@@ -24,7 +24,8 @@
 #include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <Ecore.h>
+#include <stdlib.h>
+#include <glib.h>
 
 #include "menu_db_util.h"
 #include "aul.h"
@@ -38,6 +39,7 @@ static char **gargv;
 static int gargc;
 static char *cmd;
 static int apn_pid;
+static GMainLoop *mainloop = NULL;
 
 typedef struct _test_func_t {
 	char *name;
@@ -123,7 +125,8 @@ static void cb_func(bundle *kb, int is_cancel, void *data)
 
 	if ((strcmp(cmd, "launch_res") == 0)
 	    || (strcmp(cmd, "open_svc_res") == 0))
-		ecore_main_loop_quit();
+		g_main_loop_quit(mainloop);
+
 }
 
 int open_test()
@@ -163,6 +166,36 @@ int term_req_pid_test()
 	return aul_subapp_terminate_request_pid(apn_pid);
 }
 
+int term_pid_without_restart_test(void)
+{
+	static int num = 0;
+	printf("[aul_term_pid_without_restart %d test] %d \n", num++, apn_pid);
+	return aul_terminate_pid_without_restart(apn_pid);
+}
+
+int term_bgapp_pid_test(void)
+{
+	static int num = 0;
+	printf("[aul_term_pid_without_restart %d test] %d \n", num++, apn_pid);
+	return aul_terminate_bgapp_pid(apn_pid);
+}
+
+int pause_test(void)
+{
+	static int num = 0;
+
+	printf("[aul_pause_app %d test] %s \n", num++, gargv[2]);
+	return aul_pause_app(gargv[2]);
+}
+
+int pause_pid_test(void)
+{
+	static int num = 0;
+
+	printf("[aul_pause_pid %d test] %d \n", num++, apn_pid);
+	return aul_pause_pid(apn_pid);
+}
+
 static test_func_t scn_func[] = {
 	{"n", launch_test, "launch_test", ""},
 	{"n", launch_test, "launch_test", ""},
@@ -175,14 +208,14 @@ static test_func_t scn_func[] = {
 	{"n", launch_test, "launch_test", ""}
 };
 
-static Eina_Bool run_all_test(void *data)
+static gboolean run_all_test(void *data)
 {
 	static int pos = 0;
 	int ret;
 
 	if (pos > sizeof(scn_func) / sizeof(test_func_t) - 1) {
 		printf("all internal test done\n");
-		ecore_main_loop_quit();
+		g_main_loop_quit(mainloop);
 		return 0;
 	}
 
@@ -204,7 +237,27 @@ static Eina_Bool run_all_test(void *data)
 
 int all_test()
 {
-	ecore_timer_add(2, run_all_test, NULL);
+	static int pos = 0;
+	int ret;
+
+	if (pos > sizeof(scn_func) / sizeof(test_func_t) - 1) {
+		printf("all internal test done\n");
+		return 0;
+	}
+
+	if (strncmp(scn_func[pos].name, "n", 1) == 0) {
+		printf("[test %d] %s , pkgname = %s\n", pos, scn_func[pos].desc,
+		       gargv[2]);
+		apn_pid = scn_func[pos].func();
+		printf("... return pid = %d\n", apn_pid);
+	} else {
+		printf("[test %d] %s , pid = %d\n", pos, scn_func[pos].desc,
+		       apn_pid);
+		ret = scn_func[pos].func();
+		printf("... return res = %d\n", ret);
+	}
+	pos++;
+
 	return 0;
 }
 
@@ -221,7 +274,7 @@ int is_run_test()
 int iterfunc(const aul_app_info *info, void *data)
 {
 	printf("\t==========================\n");
-	printf("\t pkg_name: %s\n", info->appid);
+	printf("\t appid: %s\n", info->appid);
 	printf("\t app_path: %s\n", info->app_path);
 	printf("\t running pid: %d\n", info->pid);
 	printf("\t==========================\n");
@@ -351,7 +404,7 @@ static void print_menu_db_info(const app_info_from_db *info)
 	}
 
 	printf("\t==========================\n");
-	printf("\t pkg_name: %s\n", info->pkg_name);
+	printf("\t appid: %s\n", info->appid);
 	printf("\t app_path: %s\n", info->app_path);
 	printf("\t is_minst: %d\n", 0);
 	printf("\t==========================\n");
@@ -387,10 +440,10 @@ static int set_pkg_func()
 
 	pkgname = gargv[2];
 	apppath = gargv[3];
-	
+
 	appname = strrchr(apppath,'/')+1;
 	snprintf(ai.app_icon_path, PATH_LEN, "aul_test_icon_path/%d",getpid());
-	snprintf(ai.desktop_path, PATH_LEN, 
+	snprintf(ai.desktop_path, PATH_LEN,
 		"aul_test_desktop_path/%d",getpid());
 
 	snprintf (query, sizeof(query), "insert into "TABLE_MENU"(\
@@ -546,6 +599,11 @@ int set_defapp_svc_test()
 	return ret;
 }
 
+int reload_appinfo(void)
+{
+	return aul_reload_appinfo();
+}
+
 static test_func_t test_func[] = {
 	{"launch",launch_test,"aul_launch_app test",
 		"[usage] launch <pkgname> <key1> <val1> <key2> <val2> ..."},
@@ -559,6 +617,10 @@ static test_func_t test_func[] = {
 		"[usage] term_pid <pid>" },
 	{"term_req_pid", term_req_pid_test,"aul_subapp_terminate_request_pid test",
 		"[usage] term_req_pid <pid>" },
+	{"term_pid_without_restart", term_pid_without_restart_test, "aul_terminate_pid_without_restart test",
+		"[usage] term_pid_without_restart <pid>" },
+	{"term_bgapp", term_bgapp_pid_test, "aul_terminate_bgapp_pid test",
+		"[usage] term_bgapp <pid>" },
 	{"dbuslaunch", dbus_launch_test,"launch by dbus auto activation",
 		"[usage] term_pid <pid>" },
 	{"all",all_test,"test based on predefine scenario",
@@ -570,7 +632,7 @@ static test_func_t test_func[] = {
 		"[usage] getallpkg all"},
 	{"getpkgpid", get_pkgpid_test, "aul_app_get_appid_bypid test",
 		"[usage] getpkgpid <pid>"},
-	
+
 	{"open_file", open_file_test, "aul_open_file test",
 		"[usage] open_file <filename>"},
 	{"open_content", open_content_test, "aul_open_content test",
@@ -602,11 +664,17 @@ static test_func_t test_func[] = {
 		"[usage] set_defapp_svc <svcname> <defapp to be set>"},
 	{"get_defapp_svc", get_defapp_svc_test, "aul_get_defapp_from_svc test"
 		"[usage] get_defapp_svc <svcname>"},
-	
+
 	{"getpkg", get_pkg_func, "get package",
 	      	"[usage] getpkg <pkgname>"},
+	{"pause", pause_test,"aul_pause_app test",
+		"[usage] pause <pkgname>" },
+	{"pause_pid", pause_pid_test,"aul_pause_pid test",
+		"[usage] pause_pid <pid>" },
 	{"update_list", update_running_list, "update running list",
 	      	"[usage] update_list <appid> <app_path> <pid>"},
+	{"reload", reload_appinfo, "reload appinfo table",
+		"[usage] reload"},
 /*
 	{"setpkg", set_pkg_func, "set package",
 	      	"[usage] setpkg <pkgname> <apppath>"},
@@ -657,11 +725,11 @@ void print_usage(char *progname)
 		printf("\t\t%s\n", tmp->usage);
 	}
 
-	printf("[note] getpkg/setpkg/delpkg/init_defapp_mime "
+	printf("[note] getpkg/setpkg/delpkg/init_defapp_mime/reload "
 		"cmd is internal purpose\n");
 }
 
-static Eina_Bool run_func(void *data)
+static gboolean run_func(void *data)
 {
 	callfunc(cmd);
 
@@ -670,33 +738,37 @@ static Eina_Bool run_func(void *data)
 	    || strcmp(cmd, "open_svc_res") == 0)
 		return 0;
 	else
-		ecore_main_loop_quit();
+		g_main_loop_quit(mainloop);
 
 	return 0;
 }
 
 int main(int argc, char **argv)
 {
-	if (argc < 3) {
+	if (argc < 2) {
 		print_usage(argv[0]);
 		exit(0);
 	}
 
-	ecore_init();
-
 	cmd = argv[1];
 	gargc = argc;
 	gargv = argv;
-	apn_pid = atoi(argv[2]);
+	if (argv[2])
+		apn_pid = atoi(argv[2]);
 
 	aul_launch_init(NULL, NULL);
 
 	/*aul_listen_app_dead_signal(dead_tracker,NULL); */
 	/*aul_listen_app_dead_signal(NULL,NULL); */
 
-	ecore_idler_add(run_func, NULL);
+	g_idle_add(run_func,NULL);
 
-	ecore_main_loop_begin();
+	mainloop = g_main_loop_new(NULL, FALSE);
+	if (!mainloop) {
+		printf("failed to create glib main loop\n");
+		exit(EXIT_FAILURE);
+	}
+	g_main_loop_run(mainloop);
 
 	return 0;
 }

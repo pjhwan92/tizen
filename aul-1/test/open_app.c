@@ -23,8 +23,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <string.h>
+#include <glib.h>
 
-#include <Ecore.h>
 #include "aul.h"
 
 #define ROOT_UID 0
@@ -33,9 +34,11 @@
 static char **gargv;
 static int gargc;
 bundle *kb = NULL;
+static int debugFlag = 0;
 
+static GMainLoop *mainloop = NULL;
 
-static bundle *create_internal_bundle(int start)
+static bundle *create_internal_bundle()
 {
 	bundle *kb;
 	int i;
@@ -43,60 +46,31 @@ static bundle *create_internal_bundle(int start)
 	char* val_array[128];
 
 	kb = bundle_create();
-	for (i = start; i < gargc - 1; i++) {
-		if ((i + 1) > gargc - 1)
-			bundle_add(kb, gargv[i], " ");
-		else {
-			int j = 1;
-			strncpy(arg, gargv[i + 1], 1023);
-			val_array[0] = strtok(arg,",");
-			while(1)
-			{
-				val_array[j] = strtok(NULL,",");
-				if(val_array[j] == NULL)
-					break;
-				j++;
-			}
-			if(j==1)
-				bundle_add(kb, gargv[i], gargv[i + 1]);
-			else if(j>1)
-				bundle_add_str_array(kb, gargv[i],
-					(const char**)val_array, j);
-		}
-	}
-
+	bundle_add(kb, AUL_K_DEBUG, "1");
 	return kb;
 }
 
-int launch()
+int launch(int debug_option)
 {
-	FILE *fp;
-	int ret = -1;
 	int pid = -1;
 
-	kb = create_internal_bundle(2);
-	if (NULL == kb) {
-		printf("bundle creation fail\n");
-		return -1;
+
+	if(!debug_option)
+		pid = aul_open_app(gargv[1]);
+	else {
+		kb = create_internal_bundle();
+		if (NULL == kb) {
+			printf("bundle creation fail\n");
+			return -1;
+		}
+		pid = aul_launch_app(gargv[1], kb);
 	}
-
-	pid = aul_open_app(gargv[1]);
-
-	/* Write the package name to TMP_FILE*/
-	fp = fopen(TMP_FILE, "w");
-	if (fp == NULL)
-		return -1;
-	ret = fprintf(fp, "%d", pid);
-	fclose(fp);
-	if (ret < 0)
-		return -1;
-
 	return pid;
 }
 
 void print_usage(char *progname)
 {
-	printf("[usage] %s <appid>\n",
+	printf("[usage] %s <appid> [-d]\n",
 	       progname);
 }
 
@@ -105,54 +79,67 @@ static int __launch_app_dead_handler(int pid, void *data)
 	int listen_pid = (int) data;
 
 	if(listen_pid == pid)
-		ecore_main_loop_quit();
+		g_main_loop_quit(mainloop);
 
 	return 0;
 }
 
-static Eina_Bool run_func(void *data)
+static gboolean run_func(void *data)
 {
 	int pid = -1;
 	char *str = NULL;
-	if ((pid = launch()) > 0) {
+	if ((pid = launch(debugFlag)) > 0) {
 		printf("... successfully launched\n");
 	} else {
 		printf("... launch failed\n");
 	}
-
-	str = bundle_get_val(kb, "__LAUNCH_APP_MODE__");
-
-	if( str && strcmp(str, "SYNC") == 0 ) {
-		aul_listen_app_dead_signal(__launch_app_dead_handler, pid);
-	} else {
-		ecore_main_loop_quit();
-	}
-
 	if (kb) {
+		str = bundle_get_val(kb, "__LAUNCH_APP_MODE__");
+
+		if( str && strcmp(str, "SYNC") == 0 ) {
+			aul_listen_app_dead_signal(__launch_app_dead_handler, pid);
+		} else {
+			g_main_loop_quit(mainloop);
+		}
+
 		bundle_free(kb);
 		kb = NULL;
-	}
+	} else 
+		g_main_loop_quit(mainloop);
 
-	return 0;
+
+	return TRUE;
 }
+
 
 int main(int argc, char **argv)
 {
-	if (argc < 2) {
+	if ((argc < 2)||(argc > 3)) {
 		print_usage(argv[0]);
 		exit(EXIT_FAILURE);
 	}
 
-	ecore_init();
-
 	gargc = argc;
 	gargv = argv;
 
+	if(argc == 3) {
+		if( (strcmp(argv[2],"-d")  != 0 ) && (strcmp(argv[1],"-d")  != 0 ) ) {
+			printf("additionnal argument should be -d to enable debugging\n");
+			print_usage(argv[0]);
+			exit(EXIT_FAILURE);
+		}
+		debugFlag = 1;
+	}
 	aul_launch_init(NULL, NULL);
 
-	ecore_idler_add(run_func, NULL);
+	g_idle_add(run_func, NULL);
 
-	ecore_main_loop_begin();
+	mainloop = g_main_loop_new(NULL, FALSE);
+	if (!mainloop) {
+		printf("failed to create glib main loop\n");
+		exit(EXIT_FAILURE);
+	}
+	g_main_loop_run(mainloop);
 
 	return 0;
 }

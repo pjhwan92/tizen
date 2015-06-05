@@ -1,40 +1,41 @@
 Name:       aul
 Summary:    App utility library
-Version:    0.0.286
+Version:    0.0.300
 Release:    1
 Group:      System/Libraries
-License:    Apache License, Version 2.0
+License:    Apache-2.0
 Source0:    %{name}-%{version}.tar.gz
-Source101:  launchpad-preload@.service
-Source102:  ac.service
+Source101:  ac.service
+Source102:  ac.socket
+Source103:  amd_session_agent.service
+Source104:  amd_session_agent.socket
+Source1001: %{name}.manifest
 
-Requires(post): /sbin/ldconfig
-Requires(post): /usr/bin/systemctl
+Requires(post):   /sbin/ldconfig
+Requires(post):   /usr/bin/systemctl
 Requires(postun): /sbin/ldconfig
 Requires(postun): /usr/bin/systemctl
-Requires(preun): /usr/bin/systemctl
+Requires(preun):  /usr/bin/systemctl
 
 BuildRequires:  cmake
 BuildRequires:  pkgconfig(dbus-glib-1)
 BuildRequires:  pkgconfig(sqlite3)
-BuildRequires:  pkgconfig(x11)
-BuildRequires:  pkgconfig(ecore)
 BuildRequires:  pkgconfig(bundle)
 BuildRequires:  pkgconfig(dlog)
 BuildRequires:  pkgconfig(ail)
 BuildRequires:  xdgmime-devel, pkgconfig(xdgmime)
-BuildRequires:  pkgconfig(libprivilege-control)
+BuildRequires:  pkgconfig(security-manager)
 BuildRequires:  pkgconfig(app-checker)
 BuildRequires:  pkgconfig(app-checker-server)
 BuildRequires:  pkgconfig(rua)
-BuildRequires:  pkgconfig(ecore-x)
-BuildRequires:  pkgconfig(ecore-input)
-BuildRequires:  pkgconfig(utilX)
 BuildRequires:  pkgconfig(vconf)
-BuildRequires:  pkgconfig(pkgmgr-info)
 BuildRequires:  pkgconfig(libsmack)
+BuildRequires:  pkgconfig(pkgmgr-info)
+BuildRequires:  pkgconfig(pkgmgr)
+BuildRequires:  libattr-devel
 BuildRequires:  pkgconfig(privacy-manager-client)
-
+BuildRequires:  pkgconfig(libtzplatform-config)
+BuildRequires:  pkgconfig(libsystemd-daemon)
 
 %description
 Application utility library
@@ -47,99 +48,110 @@ Requires:   %{name} = %{version}-%{release}
 %description devel
 Application utility library (devel)
 
+%package test
+Summary:    App utility test tools 
+Group:      Development/Libraries
+Requires:   %{name} = %{version}-%{release}
+
+%description test
+Application utility library (test tools)
+
 
 %prep
 %setup -q
+sed -i 's|TZ_SYS_DB|%{TZ_SYS_DB}|g' %{SOURCE1001}
+cp %{SOURCE1001} .
 
 %build
 %if 0%{?simulator}
 CFLAGS="%{optflags} -D__emul__"; export CFLAGS
 %endif
-export CFLAGS="$CFLAGS -DTIZEN_ENGINEER_MODE"
-export CXXFLAGS="$CXXFLAGS -DTIZEN_ENGINEER_MODE"
-export FFLAGS="$FFLAGS -DTIZEN_ENGINEER_MODE"
 
 %cmake .
-
-make %{?jobs:-j%jobs}
+%__make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
 %make_install
 
-mkdir -p %{buildroot}/etc/init.d
-install -m 755 launchpad_run %{buildroot}/etc/init.d
+mkdir -p %{buildroot}%{_sysconfdir}/init.d
+install -m 755 launchpad_run %{buildroot}%{_sysconfdir}/init.d
 
-mkdir -p %{buildroot}/etc/rc.d/rc3.d
-mkdir -p %{buildroot}/etc/rc.d/rc4.d
+mkdir -p %{buildroot}%{_sysconfdir}/rc.d/rc3.d
+mkdir -p %{buildroot}%{_sysconfdir}/rc.d/rc4.d
 ln -sf ../../init.d/launchpad_run %{buildroot}/%{_sysconfdir}/rc.d/rc3.d/S34launchpad_run
 ln -sf ../../init.d/launchpad_run %{buildroot}/%{_sysconfdir}/rc.d/rc4.d/S80launchpad_run
 
-mkdir -p %{buildroot}/opt/dbspace
-sqlite3 %{buildroot}/opt/dbspace/.mida.db < %{buildroot}/usr/share/aul/mida_db.sql
-rm -rf %{buildroot}/usr/share/aul/mida_db.sql
+mkdir -p %{buildroot}%{TZ_SYS_DB}
+sqlite3 %{buildroot}%{TZ_SYS_DB}/.mida.db < %{buildroot}%{_datadir}/aul/mida_db.sql
+rm -rf %{buildroot}%{_datadir}/aul/mida_db.sql
 
-mkdir -p %{buildroot}/usr/lib/systemd/system/graphical.target.wants
-install -m 0644 %SOURCE101 %{buildroot}/usr/lib/systemd/system/launchpad-preload@.service
-install -m 0644 %SOURCE102 %{buildroot}/usr/lib/systemd/system/ac.service
-ln -s ../launchpad-preload@.service %{buildroot}/usr/lib/systemd/system/graphical.target.wants/launchpad-preload@app.service
-ln -s ../ac.service %{buildroot}/usr/lib/systemd/system/graphical.target.wants/ac.service
-
-mkdir -p %{buildroot}/opt/etc/smack/accesses.d
-install -m 644 aul.rule %{buildroot}/opt/etc/smack/accesses.d
-
-mkdir -p %{buildroot}/usr/share/license
-cp LICENSE %{buildroot}/usr/share/license/%{name}
-
+mkdir -p %{buildroot}%{_unitdir}/default.target.wants
+mkdir -p %{buildroot}%{_unitdir}/sockets.target.wants
+mkdir -p %{buildroot}%{_unitdir_user}/sockets.target.wants
+install -m 0644 %SOURCE101 %{buildroot}%{_unitdir}/ac.service
+install -m 0644 %SOURCE102 %{buildroot}%{_unitdir}/ac.socket
+install -m 0644 %SOURCE103 %{buildroot}%{_unitdir_user}/amd_session_agent.service
+install -m 0644 %SOURCE104 %{buildroot}%{_unitdir_user}/amd_session_agent.socket
+ln -sf ../ac.service %{buildroot}%{_unitdir}/default.target.wants/ac.service
+ln -sf ../ac.socket %{buildroot}%{_unitdir}/sockets.target.wants/ac.socket
+ln -sf ../amd_session_agent.socket %{buildroot}%{_unitdir_user}/sockets.target.wants/amd_session_agent.socket
 
 %preun
 if [ $1 == 0 ]; then
-    systemctl stop launchpad-preload@app.service
     systemctl stop ac.service
+    systemctl disable ac
+    systemctl --global disable amd_session_agent
 fi
 
 %post
 /sbin/ldconfig
 systemctl daemon-reload
 if [ $1 == 1 ]; then
-    systemctl restart launchpad-preload@app.service
     systemctl restart ac.service
 fi
 
-%postun -p /sbin/ldconfig
+%postun
+/sbin/ldconfig
 systemctl daemon-reload
 
 %files
-%manifest aul.manifest
+%license LICENSE
+%manifest %{name}.manifest
 %attr(0644,root,root) %{_libdir}/libaul.so.0
 %attr(0644,root,root) %{_libdir}/libaul.so.0.1.0
 %{_sysconfdir}/init.d/launchpad_run
-%attr(0755,root,root) %{_bindir}/aul_service.sh
-%attr(0755,root,root) %{_bindir}/aul_service_test.sh
 %attr(0755,root,root) %{_sysconfdir}/rc.d/rc3.d/S34launchpad_run
 %attr(0755,root,root) %{_sysconfdir}/rc.d/rc4.d/S80launchpad_run
-%config(noreplace) %attr(0644,root,app) /opt/dbspace/.mida.db
-%config(noreplace) %attr(0644,root,app) /opt/dbspace/.mida.db-journal
+%config(noreplace) %attr(0644,root,%{TZ_SYS_USER_GROUP}) %{TZ_SYS_DB}/.mida.db
+%config(noreplace) %attr(0644,root,%{TZ_SYS_USER_GROUP}) %{TZ_SYS_DB}/.mida.db-journal
 %attr(0755,root,root) %{_bindir}/aul_mime.sh
 %{_bindir}/aul_test
+%{_bindir}/app_launcher
+%caps(cap_mac_admin,cap_mac_override,cap_setgid=ei) %{_bindir}/amd_session_agent
+%{_datadir}/aul/miregex/*
+%{_datadir}/aul/service/*
+%{_datadir}/aul/preload_list.txt
+%{_datadir}/aul/preexec_list.txt
+%{_unitdir}/ac.service
+%{_unitdir}/default.target.wants/ac.service
+%{_unitdir}/ac.socket
+%{_unitdir}/sockets.target.wants/ac.socket
+%{_unitdir_user}/amd_session_agent.service
+%{_unitdir_user}/amd_session_agent.socket
+%{_unitdir_user}/sockets.target.wants/amd_session_agent.socket
+%{_bindir}/amd
+%{_bindir}/daemon-manager-release-agent
+%{_bindir}/daemon-manager-launch-agent
+
+
+%files  test
 %{_bindir}/launch_app
 %{_bindir}/open_app
-/usr/share/aul/miregex/*
-/usr/share/aul/service/*
-/usr/share/aul/preload_list.txt
-/usr/share/aul/preexec_list.txt
-%{_bindir}/launchpad_preloading_preinitializing_daemon
-/usr/lib/systemd/system/graphical.target.wants/launchpad-preload@app.service
-/usr/lib/systemd/system/graphical.target.wants/ac.service
-/usr/lib/systemd/system/launchpad-preload@.service
-/usr/lib/systemd/system/ac.service
-/usr/bin/amd
-/usr/bin/daemon-manager-release-agent
-/usr/bin/daemon-manager-launch-agent
-/opt/etc/smack/accesses.d/aul.rule
-/usr/share/license/%{name}
+%attr(0755,root,root) %{_bindir}/aul_service.sh
+%attr(0755,root,root) %{_bindir}/aul_service_test.sh
 
 %files devel
-/usr/include/aul/*.h
+%{_includedir}/aul/*.h
 %{_libdir}/*.so
 %{_libdir}/pkgconfig/*.pc

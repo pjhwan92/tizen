@@ -20,23 +20,9 @@
  */
 
 
-#ifdef DAC_ACTIVATE
-
-#include <privilege-control.h>
-
-#define INHOUSE_UID     5000
-static inline int __set_access(const char* pkg_name, const char* pkg_type, const char* app_path)
+#include <tzplatform_config.h>
+#include <security-manager.h>
+static inline int __set_access(const char* appId, const char* pkg_type, const char* app_path)
 {
-	return set_app_privilege(pkg_name, pkg_type, app_path);
+	return security_manager_prepare_app(appId) == SECURITY_MANAGER_SUCCESS ? 0 : -1;
 }
-
-#else
-
-static inline int __set_access(const char* pkg_name, const char* pkg_type, const char* app_path)
-{
-	return 0;
-}
-
-#endif
-
-

@@ -34,6 +34,7 @@ enum app_cmd {
 	APP_RESUME,
 	APP_RESUME_BY_PID,
 	APP_TERM_BY_PID,
+	APP_TERM_BY_PID_WITHOUT_RESTART,
 	APP_RESULT,
 	APP_START_RES,
 	APP_CANCEL,
@@ -51,7 +52,17 @@ enum app_cmd {
 	APP_STATUS_UPDATE,
 	APP_RELEASED,
 	APP_RUNNING_LIST_UPDATE,
-	APP_TERM_REQ_BY_PID
+	APP_TERM_REQ_BY_PID,
+	APP_TERM_BY_PID_ASYNC,
+	APP_TERM_BGAPP_BY_PID,
+	APP_PAUSE,
+	APP_PAUSE_BY_PID,
+
+	/* for special purpose */
+	AMD_RELOAD_APPINFO,
+	/* reserved for AMD Agent */
+	APP_DEAD_SIGNAL,
+	AGENT_DEAD_SIGNAL
 };
 
 #define AUL_SOCK_PREFIX "/tmp/alaunch"
@@ -63,6 +74,7 @@ enum app_cmd {
 #define EILLEGALACCESS 127
 #define ETERMINATING 126
 #define ENOLAUNCHPAD 125
+#define EREJECTED 123
 
 typedef struct _app_pkt_t {
 	int cmd;
@@ -70,14 +82,22 @@ typedef struct _app_pkt_t {
 	unsigned char data[1];
 } app_pkt_t;
 
+typedef struct _pkt_t {
+	uid_t caller_uid;
+	app_pkt_t *pkt;
+} pkt_t;
+
 int __create_server_sock(int pid);
 int __create_client_sock(int pid);
 int __app_send_raw(int pid, int cmd, unsigned char *kb_data, int datalen);
 int __app_send_raw_with_noreply(int pid, int cmd, unsigned char *kb_data, int datalen);
 int __app_send_raw_with_delay_reply(int pid, int cmd, unsigned char *kb_data, int datalen);
+int __app_agent_send_raw(int uid, int cmd, unsigned char *kb_data, int datalen);
+int __app_agent_send_raw_with_noreply(int uid, int cmd, unsigned char *kb_data, int datalen);
 app_pkt_t *__app_recv_raw(int fd, int *clifd, struct ucred *cr);
 app_pkt_t *__app_send_cmd_with_result(int pid, int cmd, unsigned char *kb_data, int datalen);
-
-
+int __create_agent_client_sock(int uid);
+int __create_server_sock_by_path(char *path);
+int __create_sock_activation(void);
 #endif
 

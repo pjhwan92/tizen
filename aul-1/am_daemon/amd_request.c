@@ -30,27 +30,25 @@
 #include <aul.h>
 #include <glib.h>
 #include <bundle.h>
-#include <rua.h>
+#include <tzplatform_config.h>
 
 #include "amd_config.h"
 #include "simple_util.h"
 #include "app_sock.h"
 #include "aul_util.h"
 #include "amd_request.h"
-#include "amd_key.h"
 #include "amd_launch.h"
 #include "amd_appinfo.h"
-#include "amd_cgutil.h"
 #include "amd_status.h"
 
 
-#define INHOUSE_UID     5000
-
-struct appinfomgr *_raf;
-struct cginfo *_rcg;
+#define INHOUSE_UID     tzplatform_getuid(TZ_USER_NAME)
 
 static int __send_result_to_client(int fd, int res);
 static gboolean __request_handler(gpointer data);
+
+extern int __app_dead_handler(int pid, uid_t user);
+extern int __agent_dead_handler(uid_t user);
 
 static int __send_result_to_client(int fd, int res)
 {
@@ -125,7 +123,7 @@ static int __foward_cmd(int cmd, bundle *kb, int cr_pid)
 }
 
 static int __app_process_by_pid(int cmd,
-	const char *pkg_name, struct ucred *cr)
+	const char *pkg_name, struct ucred *cr, int clifd)
 {
 	int pid;
 	int ret = -1;
@@ -133,11 +131,6 @@ static int __app_process_by_pid(int cmd,
 
 	if (pkg_name == NULL)
 		return -1;
-
-	if ((cr->uid != 0) && (cr->uid != INHOUSE_UID)) {
-		_E("reject by security rule, your uid is %u\n", cr->uid);
-		return -1;
-	}
 
 	pid = atoi(pkg_name);
 	if (pid <= 1) {
@@ -147,10 +140,14 @@ static int __app_process_by_pid(int cmd,
 
 	switch (cmd) {
 	case APP_RESUME_BY_PID:
-		ret = _resume_app(pid);
+		ret = _resume_app(pid, clifd);
 		break;
 	case APP_TERM_BY_PID:
-		ret = _term_app(pid);
+	case APP_TERM_BY_PID_WITHOUT_RESTART:
+		ret = _term_app(pid, clifd);
+		break;
+	case APP_TERM_BGAPP_BY_PID:
+		ret = _term_bgapp(pid, clifd);
 		break;
 	case APP_KILL_BY_PID:
 		if ((ret = _send_to_sigkill(pid)) < 0)
@@ -160,50 +157,19 @@ static int __app_process_by_pid(int cmd,
 		if ((ret = __app_send_raw(pid, APP_TERM_REQ_BY_PID, (unsigned char *)&dummy, sizeof(int))) < 0) {
 			_D("terminate req packet send error");
 		}
+		break;
+	case APP_TERM_BY_PID_ASYNC:
+		if ((ret = __app_send_raw_with_noreply(pid, cmd, (unsigned char *)&dummy, sizeof(int))) < 0) {
+			_D("terminate req packet send error");
+		}
+		__real_send(clifd, ret);
+		break;
+	case APP_PAUSE_BY_PID:
+		ret = _pause_app(pid, clifd);
+		break;
 	}
 
 	return ret;
-}
-
-static gboolean __add_history_handler(gpointer user_data)
-{
-	struct rua_rec rec;
-	int ret;
-	bundle *kb = NULL;
-	char *appid = NULL;
-	char *app_path = NULL;
-	struct appinfo *ai;
-	app_pkt_t *pkt = (app_pkt_t *)user_data;
-
-	if (!pkt)
-		return FALSE;
-
-	kb = bundle_decode(pkt->data, pkt->len);
-	appid = (char *)bundle_get_val(kb, AUL_K_PKG_NAME);
-
-	ai = (struct appinfo *)appinfo_find(_raf, appid);
-	app_path = (char *)appinfo_get_value(ai, AIT_EXEC);
-
-	memset((void *)&rec, 0, sizeof(rec));
-
-	rec.pkg_name = appid;
-	rec.app_path = app_path;
-
-	if(pkt->len > 0) {
-		rec.arg = (char *)pkt->data;
-	}
-
-	SECURE_LOGD("add rua history %s %s", rec.pkg_name, rec.app_path);
-
-	ret = rua_add_history(&rec);
-	if (ret == -1)
-		_D("rua add history error");
-
-	if (kb != NULL)
-		bundle_free(kb);
-	free(pkt);
-
-	return FALSE;
 }
 
 static int __get_pid_cb(void *user_data, const char *group, pid_t pid)
@@ -216,51 +182,12 @@ static int __get_pid_cb(void *user_data, const char *group, pid_t pid)
 	return -1; /* stop the iteration */
 }
 
-static int __releasable(const char *filename)
-{
-	int sz;
-	int r;
-
-	if (!filename || !*filename) {
-		_E("release service: name is empty");
-		return -1;
-	}
-
-	r = cgutil_exist_group(_rcg, CTRL_MGR, filename);
-	if (r == -1) {
-		SECURE_LOGE("release service: exist: %s", strerror(errno));
-		return -1;
-	}
-	if (r == 0) {
-		SECURE_LOGE("release service: '%s' already not exist", filename);
-		return -1;
-	}
-
-	sz = 0;
-	r = cgutil_group_foreach_pid(_rcg, CTRL_MGR, filename,
-			__get_pid_cb, &sz);
-	if (r == -1) {
-		SECURE_LOGE("release service: '%s' read pid error", filename);
-		return -1;
-	}
-	if (sz > 0) {
-		SECURE_LOGE("release service: '%s' group has process", filename);
-		return -1;
-	}
-
-	return 0;
-}
-
-static int __release_srv(const char *filename)
+static int __release_srv(uid_t caller_uid, const char *filename)
 {
 	int r;
 	const struct appinfo *ai;
 
-	r = __releasable(filename);
-	if (r == -1)
-		return -1;
-
-	ai = (struct appinfo *)appinfo_find(_raf, filename);
+	ai = (struct appinfo *)appinfo_find(caller_uid, filename);
 	if (!ai) {
 		SECURE_LOGE("release service: '%s' not found", filename);
 		return -1;
@@ -270,18 +197,57 @@ static int __release_srv(const char *filename)
 	if (r == 1) {
 		/* Auto restart */
 		SECURE_LOGD("Auto restart set: '%s'", filename);
-		return _start_srv(ai, NULL);
+		return _start_app_local(ai, NULL);
 	}
 
 	service_release(filename);
 
-	r = cgutil_remove_group(_rcg, CTRL_MGR, filename);
-	if (r == -1) {
-		SECURE_LOGE("'%s' group remove error: %s", filename, strerror(errno));
+	return 0;
+}
+
+static int __handle_dead_signal(bundle *kb, int clifd, struct ucred *pcr)
+{
+	int ret = -1;
+	const char *pid_str;
+	int pid = 0;
+
+	/* check the credentials from the caller: must be the amd agent */
+	char *caller = __proc_get_exe_bypid(pcr->pid);
+	if (!caller) {
+		_D("handle_dead_signal: unable to get caller exe");
 		return -1;
 	}
 
-	return 0;
+	if (strcmp(caller, "/usr/bin/amd_session_agent")) {
+		_D("handle_dead_signal: caller is not amd session agent, %d : '%s'",
+				pcr->pid, caller);
+		free(caller);
+		return -1;
+	}
+	free(caller);
+
+	/* get app pid from bundle */
+	pid_str = bundle_get_val(kb, AUL_K_PID);
+	if (!pid_str)
+		return -1;
+
+	pid = atoi(pid_str);
+	if (pid <= 1)
+		return -1;
+
+	_D("APP_DEAD_SIGNAL : %d", pid);
+
+	ret = __app_dead_handler(pid, pcr->uid);
+
+	return ret;
+}
+
+static void __handle_agent_dead_signal(struct ucred *pcr)
+{
+	/* TODO: check the credentials from the caller: must be the amd agent */
+
+	_D("AGENT_DEAD_SIGNAL : %d", pcr->uid);
+	__agent_dead_handler(pcr->uid);
 }
 
 static gboolean __request_handler(gpointer data)
@@ -295,11 +261,12 @@ static gboolean __request_handler(gpointer data)
 	int ret = -1;
 	int free_pkt = 1;
 	char *appid;
-	/*char *app_path;
-	char *tmp_pid;*/
+	char *term_pid;
 	int pid;
 	bundle *kb = NULL;
 	item_pkt_t *item;
+	pkt_t *pkt_uid;
+	const struct appinfo *ai;
 
 	if ((pkt = __app_recv_raw(fd, &clifd, &cr)) == NULL) {
 		_E("recv error");
@@ -312,16 +279,25 @@ static gboolean __request_handler(gpointer data)
 		case APP_START:
 		case APP_START_RES:
 			kb = bundle_decode(pkt->data, pkt->len);
-			appid = (char *)bundle_get_val(kb, AUL_K_PKG_NAME);
-			ret = _start_app(appid, kb, pkt->cmd, cr.pid, cr.uid, clifd);
-
+			appid = (char *)bundle_get_val(kb, AUL_K_APPID);
+			if (cr.uid == 0) {
+				_E("Root user request to start app assumming this is done by system deamon... Please fix it...switch to DEFAULT_USER");
+				ret = _start_app(appid, kb, pkt->cmd, cr.pid, DEFAULT_USER, clifd);
+			}
+			else {
+				ret = _start_app(appid, kb, pkt->cmd, cr.pid, cr.uid, clifd);
+			}
 			if(ret > 0) {
 				item = calloc(1, sizeof(item_pkt_t));
 				item->pid = ret;
+				item->uid = cr.uid;
 				strncpy(item->appid, appid, 511);
 				free_pkt = 0;
 
-				g_timeout_add(1000, __add_history_handler, pkt);
+				pkt_uid = calloc(1, sizeof(pkt_t));
+				pkt_uid->caller_uid = cr.uid;
+				pkt_uid->pkt = pkt;
+
 				g_timeout_add(1200, __add_item_running_list, item);
 			}
 
@@ -335,22 +311,59 @@ static gboolean __request_handler(gpointer data)
 			//__real_send(clifd, ret);
 			close(clifd);
 			break;
-		case APP_TERM_BY_PID:
-		case APP_RESUME_BY_PID:
-		case APP_KILL_BY_PID:
-		case APP_TERM_REQ_BY_PID:
+		case APP_PAUSE:
 			kb = bundle_decode(pkt->data, pkt->len);
 			appid = (char *)bundle_get_val(kb, AUL_K_PKG_NAME);
-			ret = __app_process_by_pid(pkt->cmd, appid, &cr);
-			__real_send(clifd, ret);
+			ret = _status_app_is_running_v2(appid, cr.uid);
+			if (ret > 0) {
+				ret = _pause_app(ret, clifd);
+			} else {
+				_E("%s is not running", appid);
+				close(clifd);
+			}
+			break;
+		case APP_RESUME_BY_PID:
+		case APP_PAUSE_BY_PID:
+		case APP_TERM_REQ_BY_PID:
+			kb = bundle_decode(pkt->data, pkt->len);
+			appid = (char *)bundle_get_val(kb, AUL_K_APPID);
+			ret = __app_process_by_pid(pkt->cmd, appid, &cr, clifd);
+			break;
+		case APP_TERM_BY_PID_WITHOUT_RESTART:
+		case APP_TERM_BY_PID_ASYNC:
+			/* TODO: check caller's privilege */
+			kb = bundle_decode(pkt->data, pkt->len);
+			term_pid = (char *)bundle_get_val(kb, AUL_K_APPID);
+			appid = _status_app_get_appid_bypid(atoi(term_pid));
+			ai = appinfo_find(cr.uid, appid);
+			if (ai) {
+				appinfo_set_value(ai, AIT_STATUS, "norestart");
+				ret = __app_process_by_pid(pkt->cmd, term_pid, &cr, clifd);
+			} else {
+				ret = -1;
+				close(clifd);
+			}
+			break;
+		case APP_TERM_BY_PID:
+		case APP_KILL_BY_PID:
+			/* TODO: check caller's privilege */
+			kb = bundle_decode(pkt->data, pkt->len);
+			appid = (char *)bundle_get_val(kb, AUL_K_APPID);
+			ret = __app_process_by_pid(pkt->cmd, appid, &cr, clifd);
+			break;
+		case APP_TERM_BGAPP_BY_PID:
+			/* TODO: check caller's privilege */
+			kb = bundle_decode(pkt->data, pkt->len);
+			appid = (char *)bundle_get_val(kb, AUL_K_APPID);
+			ret = __app_process_by_pid(pkt->cmd, appid, &cr, clifd);
 			break;
 		case APP_RUNNING_INFO:
-			_status_send_running_appinfo_v2(clifd);
+			_status_send_running_appinfo(clifd);
 			break;
 		case APP_IS_RUNNING:
 			appid = malloc(MAX_PACKAGE_STR_SIZE);
 			strncpy(appid, (const char*)pkt->data, MAX_PACKAGE_STR_SIZE-1);
-			ret = _status_app_is_running_v2(appid);
+			ret = _status_app_is_running(appid, cr.uid);
 			SECURE_LOGD("APP_IS_RUNNING : %s : %d",appid, ret);
 			__send_result_to_client(clifd, ret);
 			free(appid);
@@ -361,23 +374,23 @@ static gboolean __request_handler(gpointer data)
 			_D("APP_GET_APPID_BYPID : %d : %d", pid, ret);
 			break;
 		case APP_KEY_RESERVE:
-			ret = _register_key_event(cr.pid);
-			__send_result_to_client(clifd, ret);
+			// support for key events has been removed (sdx-20140813)
+			__send_result_to_client(clifd, 0);
 			break;
 		case APP_KEY_RELEASE:
-			ret = _unregister_key_event(cr.pid);
-			__send_result_to_client(clifd, ret);
+			// support for key events has been removed (sdx-20140813)
+			__send_result_to_client(clifd, 0);
 			break;
 		case APP_STATUS_UPDATE:
 			status = (int *)pkt->data;
-			ret = _status_update_app_info_list(cr.pid, *status);
+			ret = _status_update_app_info_list(cr.pid, *status, cr.uid);
 			//__send_result_to_client(clifd, ret);
 			close(clifd);
 			break;
 		case APP_RELEASED:
 			appid = malloc(MAX_PACKAGE_STR_SIZE);
 			strncpy(appid, (const char*)pkt->data, MAX_PACKAGE_STR_SIZE-1);
-			ret = __release_srv(appid);
+			ret = __release_srv(cr.uid,appid);
 			__send_result_to_client(clifd, ret);
 			free(appid);
 			break;
@@ -390,6 +403,22 @@ static gboolean __request_handler(gpointer data)
 			  ret = _status_add_app_info_list(appid, app_path, pid);*/
 			ret = 0;
 			__send_result_to_client(clifd, ret);
+			break;
+		case APP_DEAD_SIGNAL:
+			_D("APP_DEAD_SIGNAL");
+			kb = bundle_decode(pkt->data, pkt->len);
+			ret = __handle_dead_signal(kb, clifd, &cr);
+			close(clifd);
+			break;
+		case AGENT_DEAD_SIGNAL:
+			_D("AMD_AGENT_DEAD_SIGNAL");
+			__handle_agent_dead_signal(&cr);
+			close(clifd);
+			break;
+		case AMD_RELOAD_APPINFO:
+			_D("AMD_RELOAD_APPINFO");
+			appinfo_reload();
+			__send_result_to_client(clifd, 0);
 			break;
 		default:
 			_E("no support packet");
@@ -440,14 +469,19 @@ static GSourceFuncs funcs = {
 	.finalize = NULL
 };
 
-int _requset_init(struct amdmgr *amd)
+int _requset_init(void)
 {
 	int fd;
 	int r;
 	GPollFD *gpollfd;
 	GSource *src;
 
-	fd = __create_server_sock(AUL_UTIL_PID);
+	fd = __create_sock_activation();
+	if (fd == -1) {
+		_D("Create server socket without socket activation");
+		fd = __create_server_sock(AUL_UTIL_PID);
+	}
+
 	src = g_source_new(&funcs, sizeof(GSource));
 
 	gpollfd = (GPollFD *) g_malloc(sizeof(GPollFD));
@@ -465,14 +499,6 @@ int _requset_init(struct amdmgr *amd)
 		/* TODO: error handle*/
 		return -1;
 	}
-
-	_raf = amd->af;
-	_rcg = amd->cg;
-
-	r = rua_init();
-	r = rua_clear_history();
-
-	_D("rua_clear_history : %d", r);
 
 	return 0;
 }

@@ -24,7 +24,6 @@
 #include <glib.h>
 #include <aul.h>
 #include <string.h>
-#include <Ecore.h>
 
 #include "amd_config.h"
 #include "amd_status.h"
@@ -36,18 +35,23 @@
 
 GSList *app_status_info_list = NULL;
 
-struct appinfomgr *_saf = NULL;
-
-int _status_add_app_info_list(char *appid, char *app_path, int pid, int pad_pid)
+int _status_add_app_info_list(char *appid, char *app_path, int pid, int pad_pid, uid_t uid)
 {
-	GSList *iter = NULL;
-	app_status_info_t *info_t = NULL;
+	GSList *iter;
+	GSList *iter_next;
+	app_status_info_t *info_t;
 
-	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
-	{
+	GSLIST_FOREACH_SAFE(app_status_info_list, iter, iter_next) {
 		info_t = (app_status_info_t *)iter->data;
 		if(pid == info_t->pid) {
-			return 0;
+			if(uid == info_t->user)
+				return 0;
+			else {
+				//PID is unique so if it is exist but user value is not correct remove it.
+				app_status_info_list = g_slist_remove(app_status_info_list, info_t);
+				free(info_t);
+				break;
+			}
 		}
 	}
 
@@ -57,33 +61,20 @@ int _status_add_app_info_list(char *appid, char *app_path, int pid, int pad_pid)
 	info_t->status = STATUS_LAUNCHING;
 	info_t->pid = pid;
 	info_t->pad_pid = pad_pid;
+	info_t->user = uid;
 	app_status_info_list = g_slist_append(app_status_info_list, info_t);
 
 	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
 	{
 		info_t = (app_status_info_t *)iter->data;
 
-		//SECURE_LOGD("%s, %d, %d", info_t->appid, info_t->pid, info_t->status);
+		SECURE_LOGD(" [%d] : %s, %d, %d", info_t->user, info_t->appid, info_t->pid, info_t->status);
 	}
 
 	return 0;
 }
 
-static Eina_Bool __app_terminate_timer_cb(void *data)
-{
-	int pid = (int)data;
-	int ret = 0;
-
-	_D("pid(%d)", pid);
-
-	ret = kill(pid, SIGKILL);
-	if (ret == -1)
-		_D("send SIGKILL: %s", strerror(errno));
-
-	return ECORE_CALLBACK_CANCEL;
-}
-
-int _status_update_app_info_list(int pid, int status)
+int _status_update_app_info_list(int pid, int status, uid_t uid)
 {
 	GSList *iter = NULL;
 	app_status_info_t *info_t = NULL;
@@ -91,12 +82,8 @@ int _status_update_app_info_list(int pid, int status)
 	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
 	{
 		info_t = (app_status_info_t *)iter->data;
-		if(pid == info_t->pid) {
+		if((pid == info_t->pid) && ((info_t->user == uid) || (info_t->user == 0))) {
 			info_t->status = status;
-			if(status == STATUS_DYING) {
-				if(info_t->pad_pid != DEBUG_LAUNCHPAD_PID)
-					ecore_timer_add(2, __app_terminate_timer_cb, info_t->pid);
-			}
 			break;
 		}
 	}
@@ -111,15 +98,32 @@ int _status_update_app_info_list(int pid, int status)
 	return 0;
 }
 
-int _status_remove_app_info_list(int pid)
+int _status_remove_app_info_list_with_uid(uid_t uid)
 {
-	GSList *iter = NULL;
-	app_status_info_t *info_t = NULL;
+	GSList *iter;
+	GSList *iter_next;
+	app_status_info_t *info_t;
 
-	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
-	{
+	GSLIST_FOREACH_SAFE(app_status_info_list, iter, iter_next) {
 		info_t = (app_status_info_t *)iter->data;
-		if(pid == info_t->pid) {
+		if (info_t->user == uid) {
+			app_status_info_list =
+				g_slist_remove(app_status_info_list, info_t);
+			free(info_t);
+		}
+	}
+	return 0;
+}
+
+int _status_remove_app_info_list(int pid, uid_t uid)
+{
+	GSList *iter;
+	GSList *iter_next;
+	app_status_info_t *info_t;
+
+	GSLIST_FOREACH_SAFE(app_status_info_list, iter, iter_next) {
+		info_t = (app_status_info_t *)iter->data;
+		if((pid == info_t->pid) && ((info_t->user == uid) || (info_t->user == 0))) {
 			app_status_info_list = g_slist_remove(app_status_info_list, info_t);
 			free(info_t);
 			break;
@@ -153,7 +157,7 @@ int _status_get_app_info_status(int pid)
 }
 
 
-int _status_app_is_running(char *appid)
+int _status_app_is_running(char *appid, uid_t uid)
 {
 	GSList *iter = NULL;
 	app_status_info_t *info_t = NULL;
@@ -161,11 +165,26 @@ int _status_app_is_running(char *appid)
 	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
 	{
 		info_t = (app_status_info_t *)iter->data;
-		if( strncmp(appid, info_t->appid, MAX_PACKAGE_STR_SIZE) == 0 ) {
+		if(( strncmp(appid, info_t->appid, MAX_PACKAGE_STR_SIZE) == 0 ) && (info_t->user == uid)) {
 			return info_t->pid;
 		}
 	}
 	return -1;
+}
+
+char* _status_app_get_appid_bypid(int pid)
+{
+	GSList *iter = NULL;
+	app_status_info_t *info_t = NULL;
+
+	for (iter = app_status_info_list; iter != NULL; iter = g_slist_next(iter))
+	{
+		info_t = (app_status_info_t *)iter->data;
+		if( pid == info_t->pid ) {
+			return info_t->appid;
+		}
+	}
+	return NULL;
 }
 
 int _status_send_running_appinfo(int fd)
@@ -213,7 +232,7 @@ int _status_send_running_appinfo(int fd)
 	return 0;
 }
 
-int _status_app_is_running_v2(char *appid)
+int _status_app_is_running_v2(char *appid, uid_t caller_uid)
 {
 	char *apppath = NULL;
 	int ret = 0;
@@ -223,7 +242,7 @@ int _status_app_is_running_v2(char *appid)
 	if(appid == NULL)
 		return -1;
 
-	ai = appinfo_find(_saf, appid);
+	ai = appinfo_find(caller_uid, appid);
 
 	if(ai == NULL)
 		return -1;
@@ -246,19 +265,19 @@ int _status_app_is_running_v2(char *appid)
 	return ret;
 }
 
-static int __get_pkginfo(const char *dname, const char *cmdline, void *priv)
+static int __get_pkginfo(const char *dname, const char *cmdline, void *priv,uid_t uid)
 {
 	app_info_from_db *menu_info;
 	char *r_info;
 
 	r_info = (char *)priv;
 
-	if ((menu_info = _get_app_info_from_db_by_apppath(cmdline)) == NULL)
+	if ((menu_info = _get_app_info_from_db_by_apppath_user(cmdline,uid)) == NULL)
 		goto out;
 	else {
 		strncat(r_info, dname, 8);
 		strncat(r_info, ":", 1);
-		strncat(r_info, _get_pkgname(menu_info), MAX_PACKAGE_STR_SIZE);
+		strncat(r_info, _get_appid(menu_info), MAX_PACKAGE_STR_SIZE);
 		strncat(r_info, ":", 1);
 		strncat(r_info, _get_app_path(menu_info), MAX_PACKAGE_APP_PATH_SIZE);
 		strncat(r_info, ";", 1);
@@ -303,20 +322,24 @@ int _status_send_running_appinfo_v2(int fd)
 	return 0;
 }
 
-static int __get_pkgname_bypid(int pid, char *pkgname, int len)
+static int __get_appid_bypid(int pid, char *appid, int len)
 {
 	char *cmdline;
 	app_info_from_db *menu_info;
-
+	uid_t uid;
 	cmdline = __proc_get_cmdline_bypid(pid);
 	if (cmdline == NULL)
 		return -1;
 
-	if ((menu_info = _get_app_info_from_db_by_apppath(cmdline)) == NULL) {
+	uid = __proc_get_usr_bypid(pid);
+	if (uid == -1)
+		return -1;
+
+	if ((menu_info = _get_app_info_from_db_by_apppath_user(cmdline,uid)) == NULL) {
 		free(cmdline);
 		return -1;
 	} else {
-		snprintf(pkgname, len, "%s", _get_pkgname(menu_info));
+		snprintf(appid, len, "%s", _get_appid(menu_info));
 	}
 
 	free(cmdline);
@@ -342,7 +365,7 @@ int _status_get_appid_bypid(int fd, int pid)
 
 	pkt->cmd = APP_GET_APPID_BYPID_ERROR;
 
-	if (__get_pkgname_bypid(pid, (char *)pkt->data, MAX_PACKAGE_STR_SIZE) == 0) {
+	if (__get_appid_bypid(pid, (char *)pkt->data, MAX_PACKAGE_STR_SIZE) == 0) {
 		SECURE_LOGD("appid for %d is %s", pid, pkt->data);
 		pkt->cmd = APP_GET_APPID_BYPID_OK;
 		goto out;
@@ -354,7 +377,7 @@ int _status_get_appid_bypid(int fd, int pid)
 		goto out;
 
 	_D("second change pgid = %d, pid = %d", pgid, pid);
-	if (__get_pkgname_bypid(pgid, (char *)pkt->data, MAX_PACKAGE_STR_SIZE) == 0)
+	if (__get_appid_bypid(pgid, (char *)pkt->data, MAX_PACKAGE_STR_SIZE) == 0)
 		pkt->cmd = APP_GET_APPID_BYPID_OK;
 
  out:
@@ -373,12 +396,3 @@ int _status_get_appid_bypid(int fd, int pid)
 
 	return 0;
 }
-
-
-int _status_init(struct amdmgr* amd)
-{
-	_saf = amd->af;
-
-	return 0;
-}
-

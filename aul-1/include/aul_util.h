@@ -23,11 +23,23 @@
 #ifndef __AUL_UTIL_H_
 #define __AUL_UTIL_H_
 
+#include <unistd.h>
+#include <sys/types.h>
+
+#define USE_ENGINE(engine) setenv("ELM_ENGINE", engine, 1);
+
 #define AUL_UTIL_PID -2
 
 #define MAX_PACKAGE_STR_SIZE 512
 #define MAX_PACKAGE_APP_PATH_SIZE 512
 #define MAX_RUNNING_APP_INFO 512
+
+#define GSLIST_FOREACH_SAFE(list, l, l_next)   \
+	for (l = list,                            \
+			l_next = g_slist_next(l);       \
+			l;                              \
+			l = l_next,                     \
+			l_next = g_slist_next(l))
 
 typedef struct _app_status_info_t{
 	char appid[MAX_PACKAGE_STR_SIZE];
@@ -35,16 +47,12 @@ typedef struct _app_status_info_t{
 	int status;
 	int pid;
 	int pad_pid;
+	uid_t user;
 } app_status_info_t;
 
-struct amdmgr {
-	struct appinfomgr *af;  /* appinfo manager */
-	struct cginfo *cg;  /* cgroup infomation */
-};
-
-int _add_app_status_info_list(char *appid, int pid);
-int _update_app_status_info_list(int pid, int status);
-int _remove_app_status_info_list(int pid);
+int _add_app_status_info_list(char *appid, int pid, uid_t uid);
+int _update_app_status_info_list(int pid, int status, uid_t uid);
+int _remove_app_status_info_list(int pid, uid_t uid);
 
 #endif
 
