@@ -17,6 +17,7 @@ BuildRequires:  pkgconfig(ecore)
 BuildRequires:  pkgconfig(ecore-x)
 BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(glib-2.0)
+BuildRequires:	pkgconfig(capi-system-device)
 BuildRequires:  cmake
 
 
@@ -60,6 +61,7 @@ Requires:   pkgconfig(sensor)
 Requires:   pkgconfig(vconf)
 Requires:   pkgconfig(elementary)
 Requires:   pkgconfig(aul)
+Requires:		pkgconfig(capi-system-device)
 
 %description common-devel
 Application basics common (devel)
