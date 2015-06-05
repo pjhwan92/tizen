@@ -42,15 +42,27 @@ enum app_cmd {
 	APP_RUNNING_INFO,
 	APP_RUNNING_INFO_RESULT,
 	APP_IS_RUNNING,
+	APP_GET_APPID_BYPID,
+	APP_GET_APPID_BYPID_OK,
+	APP_GET_APPID_BYPID_ERROR,
 	APP_KEY_EVENT,
 	APP_KEY_RESERVE,
-	APP_KEY_RELEASE
+	APP_KEY_RELEASE,
+	APP_STATUS_UPDATE,
+	APP_RELEASED,
+	APP_RUNNING_LIST_UPDATE,
+	APP_TERM_REQ_BY_PID
 };
 
 #define AUL_SOCK_PREFIX "/tmp/alaunch"
 #define AUL_SOCK_MAXBUFF 65535
 #define LAUNCHPAD_PID -1
+#define WEB_LAUNCHPAD_PID -3
+#define DEBUG_LAUNCHPAD_PID -4
 #define ELOCALLAUNCH_ID 128
+#define EILLEGALACCESS 127
+#define ETERMINATING 126
+#define ENOLAUNCHPAD 125
 
 typedef struct _app_pkt_t {
 	int cmd;
@@ -61,8 +73,11 @@ typedef struct _app_pkt_t {
 int __create_server_sock(int pid);
 int __create_client_sock(int pid);
 int __app_send_raw(int pid, int cmd, unsigned char *kb_data, int datalen);
+int __app_send_raw_with_noreply(int pid, int cmd, unsigned char *kb_data, int datalen);
+int __app_send_raw_with_delay_reply(int pid, int cmd, unsigned char *kb_data, int datalen);
 app_pkt_t *__app_recv_raw(int fd, int *clifd, struct ucred *cr);
-app_pkt_t *__app_send_cmd_with_result(int pid, int cmd);
+app_pkt_t *__app_send_cmd_with_result(int pid, int cmd, unsigned char *kb_data, int datalen);
+
 
 #endif
 
