@@ -43,6 +43,10 @@
 #include "appcore-internal.h"
 #include "appcore-efl.h"
 
+/*************************************************************/
+#include <system/device.h>
+/*************************************************************/
+
 #define SYSMAN_MAXSTR 100
 #define SYSMAN_MAXARG 16
 #define SYSNOTI_SOCKET_PATH "/tmp/sn"
@@ -391,8 +395,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			unsigned int kill_time = 15;
+			int p, ret;
+			ret = device_battery_get_percent (&p);
 			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds\n", ui->name, _pid, kill_time);
+			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%)\n", ui->name, _pid, kill_time, p);
 			fclose(fp);
 			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 			/*********************************************************************/
