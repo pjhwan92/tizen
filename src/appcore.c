@@ -38,7 +38,7 @@
 #include "appcore-internal.h"
 
 /************************************************************/
-#include <device.h>
+#include <system/device.h>
 /************************************************************/
 
 #define SQLITE_FLUSH_MAX		(1024*1024)
@@ -318,11 +318,11 @@ static int __sys_langchg_pre(void *data, void *evt)
 
 static int __sys_langchg(void *data, void *evt)
 {
-	int p, ret;
-	ret = device_battery_get_percent (&p);
+	int p = 0, ret;
+	//ret = device_battery_get_percent (&p);
 	FILE *fp = fopen ("/mnt/mmc/wow_lan.txt", "a");
 	if (ret == DEVICE_ERROR_NONE) {
-		fprintf (fp, "lang changed\n\tBattery remain %d \%\n", p);
+		fprintf (fp, "lang changed\n\tBattery remain %d\%\n", p);
 	}
 	else {
 		fprintf (fp, "device_error occur!\n");
