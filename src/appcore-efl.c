@@ -103,9 +103,6 @@ static const char *_ae_name[AE_MAX] = {
 	[AE_RESUME] = "RESUME",
 	[AE_RESET] = "RESET",
 	[AE_LOWMEM_POST] = "LOWMEM_POST",
-	/******************************************/
-	[AE_LOWBATT_POST] = "LOWBATT_POST",
-	/******************************************/
 	[AE_MEM_FLUSH] = "MEM_FLUSH",
 };
 
@@ -275,17 +272,6 @@ static int WIN_COMP(gconstpointer data1, gconstpointer data2)
 
 GSList *g_winnode_list = NULL;
 
-
-/****************************************************************/
-static int __appcore_low_battery_post_cb (struct ui_priv *ui) {
-	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
-	if (ui->state == AS_PAUSED) {
-		fprintf (fp, "%s is effected! (low_batt_cb)\n", ui->name);
-	}
-	fclose (fp);
-}
-/****************************************************************/
-
 #if defined(MEMORY_FLUSH_ACTIVATE)
 static Eina_Bool __appcore_memory_flush_cb(void *data)
 {
@@ -299,13 +285,6 @@ static Eina_Bool __appcore_memory_flush_cb(void *data)
 
 static int __appcore_low_memory_post_cb(struct ui_priv *ui)
 {
-/****************************************************************/
-	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
-	if (ui->state == AS_PAUSED) {
-		fprintf (fp, "%s is effected! (low_mem_cb)\n", ui->name);
-	}
-	fclose (fp);
-/****************************************************************/
 	if (ui->state == AS_PAUSED) {
 		appcore_flush_memory();
 	} else {
@@ -332,13 +311,6 @@ static void __appcore_timer_del(struct ui_priv *ui)
 
 static int __appcore_low_memory_post_cb(ui_priv *ui)
 {
-/****************************************************************/
-	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
-	if (ui->state == AS_PAUSED) {
-		fprintf (fp, "%s is effected! (low_batt_cb 2)\n", ui->name);
-	}
-	fclose (fp);
-/****************************************************************/
 	return -1;
 }
 

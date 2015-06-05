@@ -37,10 +37,6 @@
 #include <aul.h>
 #include "appcore-internal.h"
 
-/************************************************************/
-#include <system/device.h>
-/************************************************************/
-
 #define SQLITE_FLUSH_MAX		(1024*1024)
 
 #define PKGNAME_MAX 256
@@ -99,9 +95,6 @@ static int __app_reset(void *data, bundle *k);
 static int __sys_lowmem_post(void *data, void *evt);
 static int __sys_lowmem(void *data, void *evt);
 static int __sys_lowbatt(void *data, void *evt);
-/************************************************************/
-static int __sys_lowbatt_post(void *data, void *evt);
-/************************************************************/
 static int __sys_langchg_pre(void *data, void *evt);
 static int __sys_langchg(void *data, void *evt);
 static int __sys_regionchg_pre(void *data, void *evt);
@@ -119,9 +112,6 @@ static struct evt_ops evtops[] = {
 	{
 	 .type = _CB_VCONF,
 	 .key.vkey = VCONFKEY_SYSMAN_BATTERY_STATUS_LOW,
-	 /************************************************************/
-	 .vcb_post = __sys_lowbatt_post,
-	 /************************************************************/
 	 .vcb = __sys_lowbatt,
 	 },
 	{
@@ -230,9 +220,6 @@ static int __sys_do(struct appcore *ac, enum sys_event event)
 {
 	struct sys_op *op;
 
-	FILE *fp = fopen ("/mnt/mmc/wow2.txt", "a");
-	fprintf (fp, "sys_do called!\n");
-	fclose (fp);
 	_retv_if(ac == NULL || event >= SE_MAX, -1);
 
 	op = &ac->sops[event];
@@ -249,10 +236,6 @@ static int __sys_lowmem_post(void *data, void *evt)
 	int val;
 
 	val = vconf_keynode_get_int(key);
-
-	FILE *fp = fopen ("/mnt/mmc/wow.txt", "a");
-	fprintf (fp, "remaining memory value (enum) : %d\n", val);
-	fclose (fp);
 
 	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)	{
 #if defined(MEMORY_FLUSH_ACTIVATE)
@@ -272,30 +255,12 @@ static int __sys_lowmem(void *data, void *evt)
 
 	val = vconf_keynode_get_int(key);
 
-	FILE *fp = fopen ("/mnt/mmc/wow1.txt", "a");
-	fprintf (fp, "remaining memory value (enum) : %d\n", val);
-	fclose (fp);
-
 	if (val >= VCONFKEY_SYSMAN_LOW_MEMORY_SOFT_WARNING)
 		return __sys_do(data, SE_LOWMEM);
 
 	return 0;
 }
 
-/************************************************************/
-static int __sys_lowbatt_post (void *data, void *evt) {
-	keynode_t *key = evt;
-	int val;
-
-	val = vconf_keynode_get_int (key);
-
-	if (val <= VCONFKEY_SYSMAN_BAT_WARNING_LOW) {
-		struct appcore *ac = data;
-		ac->ops->cb_app (AE_LOWBATT_POST, ac->ops->data, NULL);
-	}
-	return 0;
-}
-/************************************************************/
 static int __sys_lowbatt(void *data, void *evt)
 {
 	keynode_t *key = evt;
@@ -318,24 +283,11 @@ static int __sys_langchg_pre(void *data, void *evt)
 
 static int __sys_langchg(void *data, void *evt)
 {
-	int p = 0, ret;
-	//ret = device_battery_get_percent (&p);
-	FILE *fp = fopen ("/mnt/mmc/wow_lan.txt", "a");
-	if (ret == DEVICE_ERROR_NONE) {
-		fprintf (fp, "lang changed\n\tBattery remain %d\%\n", p);
-	}
-	else {
-		fprintf (fp, "device_error occur!\n");
-	}
-	fclose (fp);
 	return __sys_do(data, SE_LANGCHG);
 }
 
 static int __sys_regionchg_pre(void *data, void *evt)
 {
-	FILE *fp = fopen ("/mnt/mmc/wow_region.txt", "a");
-	fprintf (fp, "region changed\n");
-	fclose (fp);
 	update_region();
 	return 0;
 }
