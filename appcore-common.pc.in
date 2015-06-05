@@ -9,5 +9,5 @@ Name: app-core-common
 Description: SAMSUNG Linux platform application library
 Version: @VERSION@
 Requires: sensor vconf aul dlog x11
-Libs: -L${libdir} -lappcore-common
+Libs: -L${libdir} -lappcore-common @PC_LDFLAGS@
 Cflags: -I${includedir} -I${includedir}/appcore -I/usr/include/system
