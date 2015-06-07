@@ -44,6 +44,7 @@
 #include "appcore-efl.h"
 
 /*************************************************************/
+#include <ail.h>
 #include <system/device.h>
 #include <devman/devman.h>
 /*************************************************************/
@@ -401,6 +402,20 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds (Bat : %d\%, mem : %d)\n", ui->name, _pid, kill_time, p, m);
 				fclose(fp);
 				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
+
+				char *str;
+				int ret;
+				ail_appinfo_h handle;
+				fp = fopen ("test3.txt", "a");
+				ret = ail_package_get_info (ui->name, &handle);
+				if (ret == AIL_ERROR_OK) {
+					ail_appinfo_get_str (handle, AIL_PROP_TYPE_STR, &str);
+					fprintf (fp, "%s\n", str);
+					free (str);
+				}
+				else
+					fprintf (fp, "get package failed!");
+				fclose (fp);
 			}
 			else {
 				ui->kill_timer = 0;

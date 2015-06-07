@@ -19,6 +19,7 @@ BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:	pkgconfig(devman)
 BuildRequires:	pkgconfig(capi-system-device)
+BuildRequires:	pkgconfig(ail)
 BuildRequires:  cmake
 
 
