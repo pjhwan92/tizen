@@ -44,6 +44,10 @@
 #include "appcore-efl.h"
 #include <system/device.h>
 
+/*********************************************************************/
+#include <vconf/vconf.h>
+/*********************************************************************/
+
 #define SYSMAN_MAXSTR 100
 #define SYSMAN_MAXARG 16
 #define SYSNOTI_SOCKET_PATH "/tmp/sn"
@@ -393,10 +397,15 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			/*********************************************************************/
 			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
 				unsigned int mem, total_mem, bat = 0;
+				int total, pkg_cnt;
+				char buf[255], tmp[255];
 				bat = device_get_battery_pct();
 				device_memory_get_available(&mem);
 				device_memory_get_total(&total_mem);
 
+				sprintf (buf, "db/rua_data/tizen_total_cnt");
+				vconf_get_int (buf, &total);
+				sprintf (buf, "db/rua_data/org.tizen.%s", ui->
 				float coeff = ((float)mem/total_mem)*(bat/100.0);
 				float priority = 1.0;
 				unsigned int kill_time = 60 + 60 * priority * coeff;
