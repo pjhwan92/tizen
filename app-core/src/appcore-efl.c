@@ -397,9 +397,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				device_memory_get_available(&mem);
 				device_memory_get_total(&total_mem);
 
-				float coeff = (mem/total_mem)*(bat/100);
+				float coeff = ((float)mem/total_mem)*(bat/100.0);
 				float priority = 1.0;
-				unsigned int kill_time = 10 + 10 * priority * coeff;
+				unsigned int kill_time = 60 + 60 * priority * coeff;
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem: %dMB, Bat: %d\%, coeff: %f, priority: %f)\n", ui->name, kill_time, mem, bat, coeff, priority);
 				fclose(fp);
@@ -424,12 +424,14 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			tmp_val = 0;
 			/*********************************************************************/
-			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
-			fclose(fp);
-			if(ui->kill_timer){
-				ecore_timer_del(ui->kill_timer);
-				ui->kill_timer = NULL;
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
+				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+				fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
+				fclose(fp);
+				if(ui->kill_timer){
+					ecore_timer_del(ui->kill_timer);
+					ui->kill_timer = NULL;
+				}
 			}
 			/*********************************************************************/
 		}
