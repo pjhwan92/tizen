@@ -42,9 +42,8 @@
 #include <aul.h>
 #include "appcore-internal.h"
 #include "appcore-efl.h"
-#include <system/device.h>
-
 /*********************************************************************/
+#include <system/device.h>
 #include <vconf/vconf.h>
 /*********************************************************************/
 
@@ -397,12 +396,13 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			/*********************************************************************/
 			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
 				unsigned int mem, total_mem, bat = 0;
-				int total, pkg_cnt, apps;
-				char buf[255], tmp[255];
 				bat = device_get_battery_pct();
 				device_memory_get_available(&mem);
 				device_memory_get_total(&total_mem);
+				float coeff = ((float)mem/total_mem)*(bat/100.0);
 
+				int total, pkg_cnt, apps;
+				char buf[255], tmp[255];
 				sprintf (buf, "db/rua_data/tizen_total_cnt");
 				vconf_get_int (buf, &total);
 				aul_app_get_pkgname_bypid (getpid (), tmp, 255);
@@ -410,7 +410,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				vconf_get_int (buf, &pkg_cnt);
 				vconf_get_int ("db/rua_data/apps", &apps);
 				float freq = (float) apps * pkg_cnt / total;
-				float coeff = ((float)mem/total_mem)*(bat/100.0);
+				
 				unsigned int kill_time = 60 + 60 * freq * coeff;
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem: %dMB, Bat: %d\%, coeff: %f, freq: %f)\n", ui->name, kill_time, mem, bat, coeff, freq);
