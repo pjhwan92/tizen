@@ -44,7 +44,8 @@
 #include "appcore-efl.h"
 
 /*************************************************************/
-#include <ail.h>
+//#include <ail.h>
+#include <menu_db_util.h>
 #include <system/device.h>
 #include <devman/devman.h>
 /*************************************************************/
@@ -407,14 +408,15 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				int ret;
 				ail_appinfo_h handle;
 				fp = fopen ("test3.txt", "a");
-				ret = ail_package_get_info (ui->name, &handle);
+				/*ret = ail_package_get_info (ui->name, &handle);
 				if (ret == AIL_ERROR_OK) {
 					ail_appinfo_get_str (handle, AIL_PROP_TYPE_STR, &str);
 					fprintf (fp, "%s\n", str);
 					free (str);
 				}
 				else
-					fprintf (fp, "get package failed!");
+					fprintf (fp, "get package failed!");*/
+				_get_app_info_from_db_by_pkgname (ui
 				fclose (fp);
 			}
 			else {
