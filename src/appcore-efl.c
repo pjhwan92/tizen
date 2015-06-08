@@ -45,7 +45,7 @@
 
 /*************************************************************/
 //#include <ail.h>
-#include <menu_db_util.h>
+//#include <aul/menu_db_util.h>
 #include <system/device.h>
 #include <devman/devman.h>
 /*************************************************************/
@@ -404,9 +404,10 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				fclose(fp);
 				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 
-				char *str;
+				char str[255];
 				int ret;
-				ail_appinfo_h handle;
+				//app_info_from_db *appinfo;
+				//ail_appinfo_h handle;
 				fp = fopen ("test3.txt", "a");
 				/*ret = ail_package_get_info (ui->name, &handle);
 				if (ret == AIL_ERROR_OK) {
@@ -416,7 +417,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				}
 				else
 					fprintf (fp, "get package failed!");*/
-				_get_app_info_from_db_by_pkgname (ui
+				//appinfo = _get_app_info_from_db_by_pkgname (aul_app_get_pkgname_bypid (getpid (), str, 255));
+				aul_app_get_pkgname_bypid (getpid (), str, 255);
+				fprintf (fp, str);
 				fclose (fp);
 			}
 			else {
