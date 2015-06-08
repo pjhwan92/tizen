@@ -1,3 +1,0 @@
-@PREFIX@/include/*.h
-@PREFIX@/lib/pkgconfig/*.pc
-@PREFIX@/lib/*.so
