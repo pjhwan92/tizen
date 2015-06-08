@@ -392,13 +392,16 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
 			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
-				int mem, bat = 0;
+				unsigned int mem, total_mem, bat = 0;
 				bat = device_get_battery_pct();
 				device_memory_get_available(&mem);
+				device_memory_get_total(&total_mem);
 
-				unsigned int kill_time = 15;
+				float coeff = (mem/total_mem)*(bat/100);
+				float priority = 1.0;
+				unsigned int kill_time = 10 + 10 * priority * coeff;
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem : %dMB, Bat : %d\%)\n", ui->name, kill_time, mem, bat);
+				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem: %dMB, Bat: %d\%, coeff: %f, priority: %f)\n", ui->name, kill_time, mem, bat, coeff, priority);
 				fclose(fp);
 				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 			}
