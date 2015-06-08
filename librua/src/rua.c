@@ -173,7 +173,7 @@ int rua_add_history(struct rua_rec *rec)
 		vconf_unset_recursive ("db/rua_data");
 		flag = 1;
 	}
-	if (strcmp (rec->pkg_name, "org.tizen.menu-screen")) {
+	if(strcmp(rec->pkg_name, "org.tizen.menu-screen") && strcmp(rec->pkg_name, "org.tizen.volume") && strcmp(rec->pkg_name, "org.tizen.lockscreen") && strcmp(rec->pkg_name, "org.tizen.pwlock")){
 		int total = 0;
 		int apps;
 		char key[255], *key2 = "db/rua_data/apps";
