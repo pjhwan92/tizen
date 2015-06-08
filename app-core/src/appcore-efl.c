@@ -391,7 +391,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
-			if(strcmp(ui->name, "menu-screen")){
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
 				int mem, bat = 0;
 				bat = device_get_battery_pct();
 				device_memory_get_available(&mem);
