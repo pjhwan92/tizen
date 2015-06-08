@@ -397,7 +397,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			/*********************************************************************/
 			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
 				unsigned int mem, total_mem, bat = 0;
-				int total, pkg_cnt;
+				int total, pkg_cnt, apps;
 				char buf[255], tmp[255];
 				bat = device_get_battery_pct();
 				device_memory_get_available(&mem);
@@ -405,12 +405,15 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 
 				sprintf (buf, "db/rua_data/tizen_total_cnt");
 				vconf_get_int (buf, &total);
-				sprintf (buf, "db/rua_data/org.tizen.%s", ui->
+				aul_app_get_pkgname_bypid (getpid (), tmp, 255);
+				sprintf (buf, "db/rua_data/%s", tmp);
+				vconf_get_int (buf, &pkg_cnt);
+				vconf_get_int ("db/rua_data/apps", &apps);
+				float freq = (float) apps * pkg_cnt / total;
 				float coeff = ((float)mem/total_mem)*(bat/100.0);
-				float priority = 1.0;
-				unsigned int kill_time = 60 + 60 * priority * coeff;
+				unsigned int kill_time = 60 + 60 * freq * coeff;
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem: %dMB, Bat: %d\%, coeff: %f, priority: %f)\n", ui->name, kill_time, mem, bat, coeff, priority);
+				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (Mem: %dMB, Bat: %d\%, coeff: %f, freq: %f)\n", ui->name, kill_time, mem, bat, coeff, freq);
 				fclose(fp);
 				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 			}

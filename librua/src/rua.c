@@ -176,15 +176,20 @@ int rua_add_history(struct rua_rec *rec)
 	}
 	if (strcmp (rec->pkg_name, "org.tizen.menu-screen")) {
 		int total = 0;
-		char key[255];
+		int apps;
+		char key[255], *key2 = "db/rua_data/apps";
 		sprintf (key, "db/rua_data/%s", "tizen_total_cnt");
 		if (vconf_get_int (key, &total) < 0)
 			total = 0;
 		vconf_set_int (key, total + 1);
 		memset (key, 0, 255);
 		sprintf (key, "db/rua_data/%s", rec->pkg_name);
-		if (vconf_get_int (key, &total) < 0)
+		if (vconf_get_int (key, &total) < 0) {
 			total = 0;
+			if (vconf_get_int (key2, &apps) < 0)
+				apps = 0;
+			vconf_set_int (key2, apps + 1);
+		}
 		vconf_set_int (key, total + 1);
 	}
 	/****************************************************/
