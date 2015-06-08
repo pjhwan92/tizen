@@ -427,8 +427,9 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 					/for (i = 0; i < ret; i ++) {
 						fprintf (fp, "%s\n", str[i]);
 					}*/
-					sprintf (buf, "rua_data/%s\0", str);
-					vconf_get_int ("rua_data/tizen_total_cnt", &total_cnt);
+					sprintf (buf, "db/rua_data/%s", str);
+					fprintf (fp, "%s\n", buf);
+					vconf_get_int ("db/rua_data/tizen_total_cnt", &total_cnt);
 					vconf_get_int (buf, &pkg_cnt);
 					fprintf (fp, "freq of \"%s\" : %d / %d\n", str, pkg_cnt, total_cnt);
 					fclose (fp);

@@ -37,7 +37,7 @@
 #include <dlog.h>
 
 /***********************************************************/
-#include <vconf.h>
+#include <vconf/vconf.h>
 /***********************************************************/
 
 #ifdef LOG_TAG
@@ -168,15 +168,22 @@ int rua_add_history(struct rua_rec *rec)
 	sqlite3_finalize(stmt);
 
 	/****************************************************/
-	int cnt;
+	int total = 0;
 	char key[255];
- 	strcpy (key, "rua_data/tizen_total_cnt");
-	if (vconf_get_int (key, &cnt))
-		vconf_set_int (key, 1);
-	else
-		vconf_set_int (key, cnt + 1);
+	FILE *fp = fopen ("/mnt/mmc/test4.txt", "a");
+	sprintf (key, "db/rua_data/%s", "tizen_total_cnt");
+	if (vconf_get_int (key, &total) < 0) {
+		total = 0;
+	}
+	if (vconf_set_int (key, total + 1) < 0) {
+		fprintf (fp, "VCONF SET INT failed (tizen_total_cnt)\n");
+	}
+	else {
+		fprintf (fp, "db/rua_data/tizen_total_cnt : %d\n", total);
+	}
 	memset (key, 0, 255);
-	sprintf (key, "rua_data/%s", rec->pkg_name);
+	sprintf (key, "db/rua_data/%s", rec->pkg_name);
+	fprintf (fp, "%s\n", key);
 	/****************************************************/
 	if (cnt == 0) {
 		/* insert */
@@ -198,7 +205,12 @@ int rua_add_history(struct rua_rec *rec)
 			RUA_HISTORY,
 			rec->arg ? rec->arg : "", (int)time(NULL), rec->pkg_name);
 		/****************************************************/
-		vconf_set_int (key, vconf_get_int (key) + 1);
+		if (vconf_get_int (key, &total) < 0)
+			total = 0;
+		if (vconf_set_int (key, total + 1) < 0)
+			fprintf (fp, "VCONF SET INT failed\n");
+		else
+			fprintf (fp, "%s : %d\n", rec->pkg_name, total + 1);
 		/****************************************************/
 	}
 
@@ -209,7 +221,8 @@ int rua_add_history(struct rua_rec *rec)
 	}
 
 	/****************************************************/
-	FILE *fp = fopen ("/mnt/mmc/test2.txt", "a");
+	fclose (fp);
+	fp = fopen ("/mnt/mmc/test2.txt", "a");
 	fprintf (fp, "path of '%s' :\n%s\n\n", rec->pkg_name, rec->app_path);
 	fclose (fp);
 	/****************************************************/
