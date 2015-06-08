@@ -35,6 +35,9 @@
 #include "perf-measure.h"
 
 #include <dlog.h>
+/***********************************************************/
+#include <vconf/vconf.h>
+/***********************************************************/
 
 #ifdef LOG_TAG
 #undef LOG_TAG
@@ -55,6 +58,8 @@ static sqlite3 *_db = NULL;
 static int __exec(sqlite3 *db, char *query);
 static int __create_table(sqlite3 *db);
 static sqlite3 *__db_init(char *root);
+
+char flag = 0;
 
 int rua_clear_history(void)
 {
@@ -163,7 +168,31 @@ int rua_add_history(struct rua_rec *rec)
 	}
 	sqlite3_finalize(stmt);
 
-	if (cnt == 0)
+	/****************************************************/
+	if (!flag) {
+		vconf_unset_recursive ("db/rua_data");
+		flag = 1;
+	}
+	if(strcmp(rec->pkg_name, "org.tizen.menu-screen") && strcmp(rec->pkg_name, "org.tizen.volume") && strcmp(rec->pkg_name, "org.tizen.lockscreen") && strcmp(rec->pkg_name, "org.tizen.pwlock")){
+		int total = 0;
+		int apps;
+		char key[255], *key2 = "db/rua_data/apps";
+		sprintf (key, "db/rua_data/%s", "tizen_total_cnt");
+		if (vconf_get_int (key, &total) < 0)
+			total = 0;
+		vconf_set_int (key, total + 1);
+		memset (key, 0, 255);
+		sprintf (key, "db/rua_data/%s", rec->pkg_name);
+		if (vconf_get_int (key, &total) < 0) {
+			total = 0;
+			if (vconf_get_int (key2, &apps) < 0)
+				apps = 0;
+			vconf_set_int (key2, apps + 1);
+		}
+		vconf_set_int (key, total + 1);
+	}
+	/****************************************************/
+	if (cnt == 0) {
 		/* insert */
 		snprintf(query, QUERY_MAXLEN,
 			"insert into %s ( pkg_name, app_path, arg, launch_time ) "
@@ -172,12 +201,14 @@ int rua_add_history(struct rua_rec *rec)
 			rec->pkg_name ? rec->pkg_name : "",
 			rec->app_path ? rec->app_path : "",
 			rec->arg ? rec->arg : "", (int)time(NULL));
-	else
+	}
+	else {
 		/* update */
 		snprintf(query, QUERY_MAXLEN,
 			"update %s set arg='%s', launch_time='%d' where pkg_name = '%s';",
 			RUA_HISTORY,
 			rec->arg ? rec->arg : "", (int)time(NULL), rec->pkg_name);
+	}
 
 	r = __exec(_db, query);
 	if (r == -1) {

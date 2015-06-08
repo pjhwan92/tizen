@@ -42,6 +42,10 @@
 #include <aul.h>
 #include "appcore-internal.h"
 #include "appcore-efl.h"
+/*********************************************************************/
+#include <system/device.h>
+#include <vconf/vconf.h>
+/*********************************************************************/
 
 #define SYSMAN_MAXSTR 100
 #define SYSMAN_MAXARG 16
@@ -390,11 +394,30 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				r = ui->ops->pause(ui->ops->data);
 			ui->state = AS_PAUSED;
 			/*********************************************************************/
-			unsigned int kill_time = 15;
-			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< RUNNING -> PAUSED > %s(%d) will be terminated after %d seconds\n", ui->name, _pid, kill_time);
-			fclose(fp);
-			ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume") && strcmp(ui->name, "lockscreen") && strcmp(ui->name, "pwlock")){
+				unsigned int mem, total_mem, bat = 0;
+				bat = device_get_battery_pct();
+				device_memory_get_available(&mem);
+				device_memory_get_total(&total_mem);
+				float coeff = ((float)mem/total_mem) + (bat/100.0);
+
+				int total, pkg_cnt, apps;
+				char buf[255], tmp[255];
+				sprintf (buf, "db/rua_data/tizen_total_cnt");
+				vconf_get_int (buf, &total);
+				vconf_get_int ("db/rua_data/apps", &apps);
+				aul_app_get_pkgname_bypid (getpid (), tmp, 255);
+				sprintf (buf, "db/rua_data/%s", tmp);
+				vconf_get_int (buf, &pkg_cnt);
+				float freq = (float) pkg_cnt * apps / total;
+				if(freq >= 2.0) freq = 2.0;
+				
+				unsigned int kill_time = 18 + 18 * freq * coeff;
+				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (coeff: %f, freq: %f, pkg_cnt: %d, apps: %d, total: %d)\n", ui->name, kill_time, coeff, freq, pkg_cnt, apps, total);
+				fclose(fp);
+				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
+			}
 			/*********************************************************************/
 			if(r >= 0 && resource_reclaiming == TRUE)
 				__appcore_timer_add(ui);
@@ -414,12 +437,14 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			tmp_val = 0;
 			/*********************************************************************/
-			FILE *fp = fopen("/mnt/mmc/test.txt", "a");
-			fprintf(fp, "< PAUSED  -> RESUME > %s(%d) is resumed\n", ui->name, _pid);
-			fclose(fp);
-			if(ui->kill_timer){
-				ecore_timer_del(ui->kill_timer);
-				ui->kill_timer = NULL;
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
+				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
+				fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
+				fclose(fp);
+				if(ui->kill_timer){
+					ecore_timer_del(ui->kill_timer);
+					ui->kill_timer = NULL;
+				}
 			}
 			/*********************************************************************/
 		}

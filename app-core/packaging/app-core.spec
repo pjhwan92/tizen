@@ -17,6 +17,7 @@ BuildRequires:  pkgconfig(ecore)
 BuildRequires:  pkgconfig(ecore-x)
 BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(glib-2.0)
+BuildRequires:	pkgconfig(capi-system-device)
 BuildRequires:  cmake
 
 

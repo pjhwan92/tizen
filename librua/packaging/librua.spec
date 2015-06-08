@@ -11,6 +11,7 @@ Requires(postun): /sbin/ldconfig
 BuildRequires:  cmake
 BuildRequires:  pkgconfig(sqlite3)
 BuildRequires:  pkgconfig(db-util)
+BuildRequires:	pkgconfig(vconf)
 
 %description
 Recently used application library
