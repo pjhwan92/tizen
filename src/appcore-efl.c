@@ -44,6 +44,8 @@
 #include "appcore-efl.h"
 
 /*************************************************************/
+#include <vconf.h>
+//#include <rua/rua.h>
 //#include <ail.h>
 //#include <aul/menu_db_util.h>
 #include <system/device.h>
@@ -404,23 +406,33 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				fclose(fp);
 				ui->kill_timer = ecore_timer_add(kill_time, __force_terminate_cb, ui);
 
-				char str[255];
-				int ret;
-				//app_info_from_db *appinfo;
-				//ail_appinfo_h handle;
-				fp = fopen ("test3.txt", "a");
-				/*ret = ail_package_get_info (ui->name, &handle);
-				if (ret == AIL_ERROR_OK) {
-					ail_appinfo_get_str (handle, AIL_PROP_TYPE_STR, &str);
-					fprintf (fp, "%s\n", str);
-					free (str);
+				if (strcmp (ui->name, "wrt_launchpad_daemon")) {
+					char str[255], buf[255];
+					int pkg_cnt, total_cnt;
+					//app_info_from_db *appinfo;
+					//ail_appinfo_h handle;
+					fp = fopen ("/mnt/mmc/test3.txt", "a");
+					/*ret = ail_package_get_info (ui->name, &handle);
+					if (ret == AIL_ERROR_OK) {
+						ail_appinfo_get_str (handle, AIL_PROP_TYPE_STR, &str);
+						fprintf (fp, "%s\n", str);
+						free (str);
+					}
+					else
+						fprintf (fp, "get package failed!");*/
+					//appinfo = _get_app_info_from_db_by_pkgname (aul_app_get_pkgname_bypid (getpid (), str, 255));
+					aul_app_get_pkgname_bypid (getpid (), str, 255);
+					/*ret = rua_history_load_db (&str, &row, &col);
+					int i;
+					/for (i = 0; i < ret; i ++) {
+						fprintf (fp, "%s\n", str[i]);
+					}*/
+					sprintf (buf, "rua_data/%s\0", str);
+					vconf_get_int ("rua_data/tizen_total_cnt", &total_cnt);
+					vconf_get_int (buf, &pkg_cnt);
+					fprintf (fp, "freq of \"%s\" : %d / %d\n", str, pkg_cnt, total_cnt);
+					fclose (fp);
 				}
-				else
-					fprintf (fp, "get package failed!");*/
-				//appinfo = _get_app_info_from_db_by_pkgname (aul_app_get_pkgname_bypid (getpid (), str, 255));
-				aul_app_get_pkgname_bypid (getpid (), str, 255);
-				fprintf (fp, str);
-				fclose (fp);
 			}
 			else {
 				ui->kill_timer = 0;
