@@ -437,7 +437,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			tmp_val = 0;
 			/*********************************************************************/
-			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume") && strcmp(ui->name, "lockscreen") && strcmp(ui->name, "pwlock")){
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume") && strcmp(ui->name, "lockscreen") && strcmp(ui->name, "pwlock") && strcmp (ui->name, "quickpanel")){
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 				fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
 				fclose(fp);
