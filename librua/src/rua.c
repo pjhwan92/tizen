@@ -60,6 +60,8 @@ static int __exec(sqlite3 *db, char *query);
 static int __create_table(sqlite3 *db);
 static sqlite3 *__db_init(char *root);
 
+char flag = 0;
+
 int rua_clear_history(void)
 {
 	int r;
@@ -168,22 +170,35 @@ int rua_add_history(struct rua_rec *rec)
 	sqlite3_finalize(stmt);
 
 	/****************************************************/
-	int total = 0;
-	char key[255];
-	FILE *fp = fopen ("/mnt/mmc/test4.txt", "a");
-	sprintf (key, "db/rua_data/%s", "tizen_total_cnt");
-	if (vconf_get_int (key, &total) < 0) {
-		total = 0;
+	if (!flag) {
+		vconf_unset_recursive ("db/rua_data");
+		flag = 1;
 	}
-	if (vconf_set_int (key, total + 1) < 0) {
-		fprintf (fp, "VCONF SET INT failed (tizen_total_cnt)\n");
+	if (strcmp (rec->pkg_name, "org.tizen.menu-screen")) {
+		int total = 0;
+		char key[255];
+		FILE *fp = fopen ("/mnt/mmc/test4.txt", "a");
+		sprintf (key, "db/rua_data/%s", "tizen_total_cnt");
+		if (vconf_get_int (key, &total) < 0) {
+			total = 0;
+		}
+		if (vconf_set_int (key, total + 1) < 0) {
+			fprintf (fp, "VCONF SET INT failed (tizen_total_cnt)\n");
+		}
+		else {
+			fprintf (fp, "db/rua_data/tizen_total_cnt : %d\n", total);
+		}
+		memset (key, 0, 255);
+		sprintf (key, "db/rua_data/%s", rec->pkg_name);
+		fprintf (fp, "%s\n", key);
+		if (vconf_get_int (key, &total) < 0)
+			total = 0;
+		if (vconf_set_int (key, total + 1) < 0)
+			fprintf (fp, "VCONF SET INT failed\n");
+		else
+			fprintf (fp, "%s : %d\n", rec->pkg_name, total + 1);
+		fclose (fp);
 	}
-	else {
-		fprintf (fp, "db/rua_data/tizen_total_cnt : %d\n", total);
-	}
-	memset (key, 0, 255);
-	sprintf (key, "db/rua_data/%s", rec->pkg_name);
-	fprintf (fp, "%s\n", key);
 	/****************************************************/
 	if (cnt == 0) {
 		/* insert */
@@ -194,9 +209,6 @@ int rua_add_history(struct rua_rec *rec)
 			rec->pkg_name ? rec->pkg_name : "",
 			rec->app_path ? rec->app_path : "",
 			rec->arg ? rec->arg : "", (int)time(NULL));
-		/****************************************************/
-		vconf_set_int (key, 1);
-		/****************************************************/
 	}
 	else {
 		/* update */
@@ -204,14 +216,6 @@ int rua_add_history(struct rua_rec *rec)
 			"update %s set arg='%s', launch_time='%d' where pkg_name = '%s';",
 			RUA_HISTORY,
 			rec->arg ? rec->arg : "", (int)time(NULL), rec->pkg_name);
-		/****************************************************/
-		if (vconf_get_int (key, &total) < 0)
-			total = 0;
-		if (vconf_set_int (key, total + 1) < 0)
-			fprintf (fp, "VCONF SET INT failed\n");
-		else
-			fprintf (fp, "%s : %d\n", rec->pkg_name, total + 1);
-		/****************************************************/
 	}
 
 	r = __exec(_db, query);
@@ -219,13 +223,6 @@ int rua_add_history(struct rua_rec *rec)
 		LOGE("[RUA ADD HISTORY ERROR] %s\n", query);
 		return -1;
 	}
-
-	/****************************************************/
-	fclose (fp);
-	fp = fopen ("/mnt/mmc/test2.txt", "a");
-	fprintf (fp, "path of '%s' :\n%s\n\n", rec->pkg_name, rec->app_path);
-	fclose (fp);
-	/****************************************************/
 
 	PERF_MEASURE_END("RUA", timestamp);
 
