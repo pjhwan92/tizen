@@ -411,7 +411,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 				vconf_get_int (buf, &pkg_cnt);
 				float freq = (float) pkg_cnt * apps / total;
 				if(freq >= 2.0) freq = 2.0;
-				
+
 				unsigned int kill_time = 18 + 18 * freq * coeff;
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 				fprintf(fp, "< RUNNING -> PAUSED > %s will be terminated after %d seconds (coeff: %f, freq: %f, pkg_cnt: %d, apps: %d, total: %d)\n", ui->name, kill_time, coeff, freq, pkg_cnt, apps, total);
@@ -437,7 +437,7 @@ static void __do_app(enum app_event event, void *data, bundle * b)
 			ui->state = AS_RUNNING;
 			tmp_val = 0;
 			/*********************************************************************/
-			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume")){
+			if(strcmp(ui->name, "menu-screen") && strcmp(ui->name, "volume") && strcmp(ui->name, "lockscreen") && strcmp(ui->name, "pwlock")){
 				FILE *fp = fopen("/mnt/mmc/test.txt", "a");
 				fprintf(fp, "< PAUSED  -> RESUME > %s is resumed\n", ui->name);
 				fclose(fp);
